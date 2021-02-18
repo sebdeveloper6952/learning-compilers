@@ -1,7 +1,7 @@
-use std::io::{self, Write};
 use std::collections::HashMap;
+use std::io::{self, Write};
 
-fn is_op(c:char) -> bool {
+fn is_op(c: char) -> bool {
     match c {
         '+' => true,
         '-' => true,
@@ -36,9 +36,9 @@ fn main() {
             println!("Found an operator.");
         } else if s.is_ascii_digit() {
             println!("Found a digit.");
-        } else if c == '(' {
+        } else if s == '(' {
             println!("Opening parentheses.");
-        } else if c == ')' {
+        } else if s == ')' {
             println!("Closing parentheses.")
         }
     }
