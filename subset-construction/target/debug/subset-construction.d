@@ -1,1 +1,0 @@
-/home/sebdev69/Documents/projects/rust/learning-compilers/subset-construction/target/debug/subset-construction: /home/sebdev69/Documents/projects/rust/learning-compilers/subset-construction/src/main.rs
