@@ -1,4 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::fs;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::iter::FromIterator;
@@ -84,7 +86,7 @@ impl Nfa {
 /*
  * DFA representation
  */
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 struct Dfa {
     dfa: HashMap<u32, HashMap<char, u32>>,
     accepting_states: Vec<u32>,
@@ -462,4 +464,8 @@ fn main() {
     // dfa result
     println!("DFA");
     println!("{:?}", dfa);
+
+    // serialize DFA to json and write to file
+    let serialized = serde_json::to_string(&dfa).unwrap();
+    fs::write("./graph.json", serialized).expect("Error writing to file.");
 }

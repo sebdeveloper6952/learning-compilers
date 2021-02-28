@@ -1,13 +1,15 @@
 import networkx as nx
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from networkx.drawing.nx_agraph import to_agraph 
 
 NODE_SIZE = 500
 
 # graph representation
 gJson = {
     1: {2: 'a'},
-    2: {3: 'b', 4: 'a'}
+    2: {3: 'b', 4: 'a'},
+    3: {3: 'a'}
 }
 
 edge_labels = {}
