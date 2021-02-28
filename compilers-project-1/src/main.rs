@@ -1,12 +1,14 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::env;
 use std::fs;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::iter::FromIterator;
+use std::process;
 
-const ALPHABET: [char; 2] = ['a', 'b'];
-const OPERATORS: [char; 3] = ['*', '.', '|'];
+// Global variables
+// the representation of the Epsilon character
 const EPSILON: char = 'ε';
 
 /*
@@ -100,6 +102,143 @@ impl Dfa {
             accepting_states,
         }
     }
+}
+
+// ***************************************** Regex Parse and Tree *****************************************
+/*
+ * loop through input regex to build the Abstract Syntax Tree for the regex.
+ * the algorithm used is the one created by Edsger Dijkstra, Shunting Yard Algorithm
+ * https://en.wikipedia.org/wiki/Shunting-yard_algorithm
+ *
+ * Input: a regex
+ * Output: the node that represents the root of the tree
+ *         the global alphabet is also updated
+ */
+fn parse_regex(regex: &String) -> Node {
+    // holds nodes
+    let mut tree_stack: Vec<Node> = Vec::new();
+    // holds operators and parentheses
+    let mut op_stack: Vec<char> = Vec::new();
+    // tree node id
+    let mut next_id: u32 = 0;
+    // hashmap of operators and precedences
+    let mut precedences = HashMap::<char, u8>::new();
+    // populate precedences
+    precedences.insert('(', 0);
+    precedences.insert('|', 1);
+    precedences.insert('.', 2);
+    precedences.insert('*', 3);
+
+    // for each char in the regex
+    for c in regex.chars() {
+        if c.is_ascii_alphabetic() {
+            // build node for c and push into tree_stack
+            let n = Node::new(next_id, c);
+            tree_stack.push(n);
+            next_id += 1;
+        } else if c == '(' {
+            // push into op_stack
+            op_stack.push(c);
+        } else if c == ')' {
+            // pop from op_stack until '(' is found
+            // build nodes for the operators popped from stack
+            loop {
+                // pop until '(' is found
+                let op = op_stack.pop().unwrap();
+                if op == '(' {
+                    break;
+                }
+
+                // build node for operator
+                let mut n = Node::new(next_id, op);
+                next_id += 1;
+                if op == '|' {
+                    // OR
+                    let right = tree_stack.pop().unwrap();
+                    let left = tree_stack.pop().unwrap();
+                    n.add_left_child(left);
+                    n.add_right_child(right);
+                } else if op == '.' {
+                    // CONCAT
+                    let right = tree_stack.pop().unwrap();
+                    let left = tree_stack.pop().unwrap();
+                    n.add_left_child(left);
+                    n.add_right_child(right);
+                } else if op == '*' {
+                    // KLEENE
+                    let left = tree_stack.pop().unwrap();
+                    n.add_left_child(left);
+                }
+
+                // push new node into tree
+                tree_stack.push(n);
+            }
+        } else if is_op(c) {
+            // while top of stack has an operator with greater or equal precedence as 'c',
+            // pop from stack and create nodes
+            while op_stack.len() > 0 && precedences[op_stack.last().unwrap()] >= precedences[&c] {
+                // pop top operator from stack
+                let top_op = op_stack.pop().unwrap();
+                // create new node for this operator
+                let mut n = Node::new(next_id, top_op);
+                next_id += 1;
+                if top_op == '|' {
+                    // OR
+                    let right = tree_stack.pop().unwrap();
+                    let left = tree_stack.pop().unwrap();
+                    n.add_left_child(left);
+                    n.add_right_child(right);
+                } else if top_op == '.' {
+                    // CONCAT
+                    // OR
+                    let right = tree_stack.pop().unwrap();
+                    let left = tree_stack.pop().unwrap();
+                    n.add_left_child(left);
+                    n.add_right_child(right);
+                } else if top_op == '*' {
+                    // KLEENE
+                    let left = tree_stack.pop().unwrap();
+                    n.add_left_child(left);
+                }
+
+                // push new node to tree_stack
+                tree_stack.push(n);
+            }
+
+            // push to op_stack
+            op_stack.push(c);
+        } else {
+            // expression error
+            panic!("Invalid charcter found in expression.");
+        }
+    }
+
+    // process remaining nodes in op_stack
+    while !op_stack.is_empty() {
+        let top_op = op_stack.pop().unwrap();
+        let mut n = Node::new(next_id, top_op);
+        next_id += 1;
+        if top_op == '|' {
+            // OR
+            let right = tree_stack.pop().unwrap();
+            let left = tree_stack.pop().unwrap();
+            n.add_left_child(left);
+            n.add_right_child(right);
+        } else if top_op == '.' {
+            // CONCAT
+            let right = tree_stack.pop().unwrap();
+            let left = tree_stack.pop().unwrap();
+            n.add_left_child(left);
+            n.add_right_child(right);
+        } else if top_op == '*' {
+            // KLEENE
+            let left = tree_stack.pop().unwrap();
+            n.add_left_child(left);
+        }
+        tree_stack.push(n);
+    }
+
+    tree_stack.pop().unwrap()
 }
 
 // *********************************************** Thompson ***********************************************
@@ -267,6 +406,7 @@ fn subset_construction(
     nfa: &HashMap<u32, HashMap<char, HashSet<u32>>>,
     start_state: u32,
     final_state: u32,
+    alphabet: &HashSet<char>,
 ) -> Dfa {
     let mut dfa: HashMap<u32, HashMap<char, u32>> = HashMap::new();
     let mut d_states: HashSet<Vec<u32>> = HashSet::new();
@@ -287,7 +427,7 @@ fn subset_construction(
         // pop and mark T
         let state_t = unmarked.pop().unwrap();
         // foreach input symbol
-        for a in ALPHABET.iter() {
+        for a in alphabet.iter() {
             // U = e-clos(move(T, a))
             let state_u = e_closure(&f_move(&state_t[..], &a, &nfa)[..], &nfa);
             // if U not in d_states
@@ -344,143 +484,33 @@ fn nfa_simul(nfa: &Nfa, word: &String) -> bool {
 
 // *********************************************** Main ***********************************************
 fn main() {
-    // holds nodes
-    let mut tree_stack: Vec<Node> = Vec::new();
-    // holds operators and parentheses
-    let mut op_stack: Vec<char> = Vec::new();
+    // program arguments
+    let args: Vec<String> = env::args().collect();
 
-    // hashmap of operators and precedences
-    let mut precedences = HashMap::<char, u8>::new();
-    // populate precedences
-    precedences.insert('(', 0);
-    precedences.insert('|', 1);
-    precedences.insert('.', 2);
-    precedences.insert('*', 3);
-
-    // TODO: read regex from program arguments
-    // let regex = String::from("a.(a|b)*.a");
-    let regex = String::from("(a|b)*.a.b.b");
-
-    // tree node id
-    let mut next_id: u32 = 0;
-
-    // loop through input regex to build the Abstract Syntax Tree for the regex.
-    // the algorithm used is the one created by Edsger Dijkstra, Shunting Yard Algorithm
-    // https://en.wikipedia.org/wiki/Shunting-yard_algorithm
-    for c in regex.chars() {
-        if c.is_ascii_alphabetic() {
-            // build node for c and push into tree_stack
-            let n = Node::new(next_id, c);
-            tree_stack.push(n);
-            next_id += 1;
-        } else if c == '(' {
-            // push into op_stack
-            op_stack.push(c);
-        } else if c == ')' {
-            // pop from op_stack until '(' is found
-            // build nodes for the operators popped from stack
-            loop {
-                // pop until '(' is found
-                let op = op_stack.pop().unwrap();
-                if op == '(' {
-                    break;
-                }
-
-                // build node for operator
-                let mut n = Node::new(next_id, op);
-                next_id += 1;
-                if op == '|' {
-                    // OR
-                    let right = tree_stack.pop().unwrap();
-                    let left = tree_stack.pop().unwrap();
-                    n.add_left_child(left);
-                    n.add_right_child(right);
-                } else if op == '.' {
-                    // CONCAT
-                    let right = tree_stack.pop().unwrap();
-                    let left = tree_stack.pop().unwrap();
-                    n.add_left_child(left);
-                    n.add_right_child(right);
-                } else if op == '*' {
-                    // KLEENE
-                    let left = tree_stack.pop().unwrap();
-                    n.add_left_child(left);
-                }
-
-                // push new node into tree
-                tree_stack.push(n);
-            }
-        } else if is_op(c) {
-            // while top of stack has an operator with greater or equal precedence as 'c',
-            // pop from stack and create nodes
-            while op_stack.len() > 0 && precedences[op_stack.last().unwrap()] >= precedences[&c] {
-                // pop top operator from stack
-                let top_op = op_stack.pop().unwrap();
-                // create new node for this operator
-                let mut n = Node::new(next_id, top_op);
-                next_id += 1;
-                if top_op == '|' {
-                    // OR
-                    let right = tree_stack.pop().unwrap();
-                    let left = tree_stack.pop().unwrap();
-                    n.add_left_child(left);
-                    n.add_right_child(right);
-                } else if top_op == '.' {
-                    // CONCAT
-                    // OR
-                    let right = tree_stack.pop().unwrap();
-                    let left = tree_stack.pop().unwrap();
-                    n.add_left_child(left);
-                    n.add_right_child(right);
-                } else if top_op == '*' {
-                    // KLEENE
-                    let left = tree_stack.pop().unwrap();
-                    n.add_left_child(left);
-                }
-
-                // push new node to tree_stack
-                tree_stack.push(n);
-            }
-
-            // push to op_stack
-            op_stack.push(c);
-        } else {
-            // expression error
-            panic!("Invalid charcter found in expression.");
-        }
+    if args.len() < 3 {
+        println!("usage: ./exec \"<regex>\" \"<word>\"");
+        process::exit(1);
     }
 
-    // process remaining nodes in op_stack
-    while !op_stack.is_empty() {
-        let top_op = op_stack.pop().unwrap();
-        let mut n = Node::new(next_id, top_op);
-        next_id += 1;
-        if top_op == '|' {
-            // OR
-            let right = tree_stack.pop().unwrap();
-            let left = tree_stack.pop().unwrap();
-            n.add_left_child(left);
-            n.add_right_child(right);
-        } else if top_op == '.' {
-            // CONCAT
-            let right = tree_stack.pop().unwrap();
-            let left = tree_stack.pop().unwrap();
-            n.add_left_child(left);
-            n.add_right_child(right);
-        } else if top_op == '*' {
-            // KLEENE
-            let left = tree_stack.pop().unwrap();
-            n.add_left_child(left);
-        }
-        tree_stack.push(n);
-    }
+    // program arguments
+    let regex: &String = &args[1];
+    let word: &String = &args[2];
+
+    // global alphabet
+    let mut letters = regex.clone();
+    letters.retain(|c| (c.is_ascii_alphabetic() && c != EPSILON));
+    let alphabet: HashSet<char> = letters.chars().into_iter().collect();
+
+    // parse regex
+    let tree_root = parse_regex(&regex);
 
     // thompson
     let mut nfa_stack = Vec::new();
-    thompson_algorithm(tree_stack.pop().unwrap(), &mut nfa_stack, 0);
+    // thompson_algorithm(tree_stack.pop().unwrap(), &mut nfa_stack, 0);
+    thompson_algorithm(tree_root, &mut nfa_stack, 0);
 
     let nfa = nfa_stack.pop().unwrap();
-    let dfa = subset_construction(&nfa.nfa, nfa.first_state, nfa.last_state);
+    let dfa = subset_construction(&nfa.nfa, nfa.first_state, nfa.last_state, &alphabet);
 
     // serialize DFA to json and write to file
     let serialized = serde_json::to_string(&nfa).unwrap();
@@ -490,7 +520,8 @@ fn main() {
     let serialized = serde_json::to_string(&dfa).unwrap();
     fs::write("./dfa-graph.json", serialized).expect("Error writing to file.");
 
-    let word = String::from("abb");
+    // Info
+    println!("The alphabet found in the regex is: {:?}", alphabet);
     // nfa simulation
     println!("NFA accepts '{}' -> {}'", &word, nfa_simul(&nfa, &word));
     // simulate dfa with word
