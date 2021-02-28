@@ -6,6 +6,7 @@ use std::io::prelude::*;
 use std::io::BufReader;
 use std::iter::FromIterator;
 use std::process;
+use std::time::{Duration, Instant};
 
 // Global variables
 // the representation of the Epsilon character
@@ -520,10 +521,22 @@ fn main() {
     let serialized = serde_json::to_string(&dfa).unwrap();
     fs::write("./dfa-graph.json", serialized).expect("Error writing to file.");
 
+    // nfa simulation
+    let nfa_start = Instant::now();
+    let nfa_accepts = nfa_simul(&nfa, &word);
+    let nfa_duration = nfa_start.elapsed().as_micros();
+
+    let dfa_start = Instant::now();
+    let dfa_accepts = dfa_simul(&dfa, &word);
+    let dfa_duration = dfa_start.elapsed().as_micros();
+
     // Info
     println!("The alphabet found in the regex is: {:?}", alphabet);
-    // nfa simulation
-    println!("NFA accepts '{}' -> {}'", &word, nfa_simul(&nfa, &word));
+    println!("NFA accepts '{}' -> {}'", &word, nfa_accepts);
     // simulate dfa with word
-    println!("DFA accepts '{}' -> {}'", &word, dfa_simul(&dfa, &word));
+    println!("DFA accepts '{}' -> {}'", &word, dfa_accepts);
+    println!("**************************** Timing ****************************");
+    println!("NFA: {} μs", nfa_duration);
+    println!("DFA: {} μs", dfa_duration);
+    println!("****************************************************************");
 }
