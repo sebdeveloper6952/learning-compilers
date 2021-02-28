@@ -7,6 +7,7 @@ use std::iter::FromIterator;
 
 const ALPHABET: [char; 2] = ['a', 'b'];
 const OPERATORS: [char; 3] = ['*', '.', '|'];
+const EPSILON: char = 'ε';
 
 /*
  * Utility function to create hashset from u8 slice.
@@ -62,7 +63,7 @@ impl Node {
 /*
  * NFA representation
  */
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 struct Nfa {
     nfa: HashMap<u32, HashMap<char, HashSet<u32>>>,
     first_state: u32,
@@ -136,7 +137,7 @@ fn thompson_algorithm(root: Node, stack: &mut Vec<Nfa>, next_state: u32) -> u32 
         let mut nfa: HashMap<u32, HashMap<char, HashSet<u32>>> = HashMap::new();
         let mut map = HashMap::new();
         // new first state -> first states of left and right
-        map.insert('ε', hashset(&[left.first_state, right.first_state]));
+        map.insert(EPSILON, hashset(&[left.first_state, right.first_state]));
         nfa.insert(i, map);
         // add left and right nfas
         for (i, m) in left.nfa {
@@ -149,12 +150,12 @@ fn thompson_algorithm(root: Node, stack: &mut Vec<Nfa>, next_state: u32) -> u32 
         nfa.insert(left.last_state, HashMap::new());
         nfa.get_mut(&left.last_state)
             .unwrap()
-            .insert('ε', hashset(&[i + 1]));
+            .insert(EPSILON, hashset(&[i + 1]));
         // right last -> new last
         nfa.insert(right.last_state, HashMap::new());
         nfa.get_mut(&right.last_state)
             .unwrap()
-            .insert('ε', hashset(&[i + 1]));
+            .insert(EPSILON, hashset(&[i + 1]));
         // push new NFA to stack
         stack.push(Nfa::new(nfa, i, i + 1));
         i = i + 2;
@@ -168,7 +169,7 @@ fn thompson_algorithm(root: Node, stack: &mut Vec<Nfa>, next_state: u32) -> u32 
         nfa.insert(left.last_state, HashMap::new());
         nfa.get_mut(&left.last_state)
             .unwrap()
-            .insert('ε', hashset(&[right.first_state]));
+            .insert(EPSILON, hashset(&[right.first_state]));
         // add left and right nfas
         for (i, m) in left.nfa {
             nfa.insert(i, m);
@@ -187,13 +188,13 @@ fn thompson_algorithm(root: Node, stack: &mut Vec<Nfa>, next_state: u32) -> u32 
         // left.last --ε-> new.last
         nfa.get_mut(&left.last_state)
             .unwrap()
-            .insert('ε', hashset(&[left.first_state, i + 1]));
+            .insert(EPSILON, hashset(&[left.first_state, i + 1]));
         nfa.insert(i, HashMap::new());
         // new first --ε-> new last
         // new.first --ε-> left.first
         nfa.get_mut(&i)
             .unwrap()
-            .insert('ε', hashset(&[left.first_state, i + 1]));
+            .insert(EPSILON, hashset(&[left.first_state, i + 1]));
         // add left nfas
         for (i, m) in left.nfa {
             nfa.insert(i, m);
@@ -221,8 +222,8 @@ fn e_closure(states: &[u32], table: &HashMap<u32, HashMap<char, HashSet<u32>>>) 
         let s = stack.pop().unwrap();
         if table.contains_key(&s) {
             let t = &table[&s];
-            if t.contains_key(&'ε') {
-                let ts = &t[&'ε'];
+            if t.contains_key(&EPSILON) {
+                let ts = &t[&EPSILON];
                 for i in ts {
                     if !res.contains(&i) {
                         res.push(*i);
@@ -318,6 +319,29 @@ fn subset_construction(
     Dfa::new(dfa, d_acc_states)
 }
 
+// *********************************************** DFA Simulation ***********************************************
+fn dfa_simul(dfa: &Dfa, word: &String) -> bool {
+    let mut curr_state = 0;
+    for c in word.chars() {
+        curr_state = dfa.dfa[&curr_state][&c];
+    }
+
+    dfa.accepting_states.contains(&curr_state)
+}
+
+// *********************************************** NFA Simulation ***********************************************
+fn nfa_simul(nfa: &Nfa, word: &String) -> bool {
+    let mut curr_states = e_closure(&[nfa.first_state], &nfa.nfa);
+    for c in word.chars() {
+        curr_states = e_closure(&f_move(&curr_states[..], &c, &nfa.nfa)[..], &nfa.nfa);
+    }
+
+    hashset(&curr_states[..])
+        .intersection(&hashset(&[nfa.last_state]))
+        .count()
+        > 0
+}
+
 // *********************************************** Main ***********************************************
 fn main() {
     // holds nodes
@@ -342,6 +366,7 @@ fn main() {
 
     // loop through input regex to build the Abstract Syntax Tree for the regex.
     // the algorithm used is the one created by Edsger Dijkstra, Shunting Yard Algorithm
+    // https://en.wikipedia.org/wiki/Shunting-yard_algorithm
     for c in regex.chars() {
         if c.is_ascii_alphabetic() {
             // build node for c and push into tree_stack
@@ -457,15 +482,17 @@ fn main() {
     let nfa = nfa_stack.pop().unwrap();
     let dfa = subset_construction(&nfa.nfa, nfa.first_state, nfa.last_state);
 
-    // nfa result
-    println!("NFA");
-    println!("{:?}", nfa);
-
-    // dfa result
-    println!("DFA");
-    println!("{:?}", dfa);
+    // serialize DFA to json and write to file
+    let serialized = serde_json::to_string(&nfa).unwrap();
+    fs::write("./nfa-graph.json", serialized).expect("Error writing to file.");
 
     // serialize DFA to json and write to file
     let serialized = serde_json::to_string(&dfa).unwrap();
-    fs::write("./graph.json", serialized).expect("Error writing to file.");
+    fs::write("./dfa-graph.json", serialized).expect("Error writing to file.");
+
+    let word = String::from("abb");
+    // nfa simulation
+    println!("NFA accepts '{}' -> {}'", &word, nfa_simul(&nfa, &word));
+    // simulate dfa with word
+    println!("DFA accepts '{}' -> {}'", &word, dfa_simul(&dfa, &word));
 }
