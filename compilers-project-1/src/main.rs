@@ -1,12 +1,11 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::env;
+use std::fmt;
 use std::fs;
-use std::io::prelude::*;
-use std::io::BufReader;
 use std::iter::FromIterator;
 use std::process;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 // Global variables
 // the representation of the Epsilon character
@@ -87,6 +86,23 @@ impl Nfa {
     }
 }
 
+impl fmt::Display for Nfa {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut states = HashSet::new();
+        for (key, _) in &self.nfa {
+            states.insert(key);
+        }
+        write!(
+            f,
+            "ESTADOS = {:?}\nSIMBOLOS = {:?}\nINICIO = {{0}}\nACEPTACION = {{{}}}\nTRANSICION = {:?}",
+            states,
+            vec!['a', 'b'],
+            &self.last_state,
+            &self.nfa
+        )
+    }
+}
+
 /*
  * DFA representation
  */
@@ -102,6 +118,23 @@ impl Dfa {
             dfa,
             accepting_states,
         }
+    }
+}
+
+impl fmt::Display for Dfa {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut states = HashSet::new();
+        for (key, _) in &self.dfa {
+            states.insert(key);
+        }
+        write!(
+            f,
+            "ESTADOS = {:?}\nSIMBOLOS = {:?}\nINICIO = {{}}\nACEPTACION = {{{:?}}}\nTRANSICION = {:?}",
+            states,
+            vec!['a', 'b'],
+            &self.accepting_states,
+            &self.dfa
+        )
     }
 }
 
@@ -260,7 +293,6 @@ fn thompson_algorithm(root: Node, stack: &mut Vec<Nfa>, next_state: u32) -> u32 
     };
 
     if root.symbol.is_ascii_alphabetic() {
-        // println!("Build NFA for symbol {}", root.symbol);
         let mut nfa: HashMap<u32, HashMap<char, HashSet<u32>>> = HashMap::new();
         let mut states_set = HashSet::new();
         states_set.insert(i + 1);
@@ -269,7 +301,6 @@ fn thompson_algorithm(root: Node, stack: &mut Vec<Nfa>, next_state: u32) -> u32 
         stack.push(Nfa::new(nfa, i, i + 1));
         i = i + 2;
     } else if root.symbol == '|' {
-        // println!("Build NFA for Union");
         // nfas for children
         let right = stack.pop().unwrap();
         let left = stack.pop().unwrap();
@@ -300,7 +331,6 @@ fn thompson_algorithm(root: Node, stack: &mut Vec<Nfa>, next_state: u32) -> u32 
         stack.push(Nfa::new(nfa, i, i + 1));
         i = i + 2;
     } else if root.symbol == '.' {
-        // println!("Build NFA for Concat");
         // nfas for children
         let right = stack.pop().unwrap();
         let left = stack.pop().unwrap();
@@ -320,7 +350,6 @@ fn thompson_algorithm(root: Node, stack: &mut Vec<Nfa>, next_state: u32) -> u32 
         // push new NFA to stack
         stack.push(Nfa::new(nfa, left.first_state, right.last_state));
     } else if root.symbol == '*' {
-        // println!("Build NFA for Kleene");
         let left = stack.pop().unwrap();
         let mut nfa: HashMap<u32, HashMap<char, HashSet<u32>>> = HashMap::new();
         nfa.insert(left.last_state, HashMap::new());
@@ -404,9 +433,10 @@ fn f_move(
 }
 
 fn subset_construction(
-    nfa: &HashMap<u32, HashMap<char, HashSet<u32>>>,
-    start_state: u32,
-    final_state: u32,
+    nfa: &Nfa,
+    // nfa: &HashMap<u32, HashMap<char, HashSet<u32>>>,
+    // start_state: u32,
+    // final_state: u32,
     alphabet: &HashSet<char>,
 ) -> Dfa {
     let mut dfa: HashMap<u32, HashMap<char, u32>> = HashMap::new();
@@ -417,7 +447,7 @@ fn subset_construction(
     let mut curr_state = 0;
 
     // push e-closure(start_state)
-    let start = e_closure(&[start_state], &nfa);
+    let start = e_closure(&[nfa.first_state], &nfa.nfa);
     unmarked.push(start.clone());
     d_states.insert(start.clone());
     d_states_map.insert(start.clone(), curr_state);
@@ -430,7 +460,7 @@ fn subset_construction(
         // foreach input symbol
         for a in alphabet.iter() {
             // U = e-clos(move(T, a))
-            let state_u = e_closure(&f_move(&state_t[..], &a, &nfa)[..], &nfa);
+            let state_u = e_closure(&f_move(&state_t[..], &a, &nfa.nfa)[..], &nfa.nfa);
             // if U not in d_states
             if !d_states.contains(&state_u) {
                 d_states.insert(state_u.clone());
@@ -449,7 +479,7 @@ fn subset_construction(
                 .insert(*a, d_states_map[&state_u]);
 
             // is U an accepting state
-            if state_t.contains(&final_state) {
+            if state_t.contains(&nfa.last_state) {
                 if !d_acc_states.contains(&d_states_map[&state_t]) {
                     d_acc_states.push(d_states_map[&state_t]);
                 }
@@ -458,16 +488,6 @@ fn subset_construction(
     }
 
     Dfa::new(dfa, d_acc_states)
-}
-
-// *********************************************** DFA Simulation ***********************************************
-fn dfa_simul(dfa: &Dfa, word: &String) -> bool {
-    let mut curr_state = 0;
-    for c in word.chars() {
-        curr_state = dfa.dfa[&curr_state][&c];
-    }
-
-    dfa.accepting_states.contains(&curr_state)
 }
 
 // *********************************************** NFA Simulation ***********************************************
@@ -481,6 +501,16 @@ fn nfa_simul(nfa: &Nfa, word: &String) -> bool {
         .intersection(&hashset(&[nfa.last_state]))
         .count()
         > 0
+}
+
+// *********************************************** DFA Simulation ***********************************************
+fn dfa_simul(dfa: &Dfa, word: &String) -> bool {
+    let mut curr_state = 0;
+    for c in word.chars() {
+        curr_state = dfa.dfa[&curr_state][&c];
+    }
+
+    dfa.accepting_states.contains(&curr_state)
 }
 
 // *********************************************** Main ***********************************************
@@ -502,6 +532,13 @@ fn main() {
     letters.retain(|c| (c.is_ascii_alphabetic() && c != EPSILON));
     let alphabet: HashSet<char> = letters.chars().into_iter().collect();
 
+    // validate word uses the same alphabet as the regex
+    let word_alphabet: HashSet<char> = word.clone().chars().into_iter().collect();
+    if alphabet.intersection(&word_alphabet).count() != word_alphabet.len() {
+        println!("Invalid character found in word");
+        process::exit(1);
+    }
+
     // parse regex
     let tree_root = parse_regex(&regex);
 
@@ -511,7 +548,7 @@ fn main() {
     thompson_algorithm(tree_root, &mut nfa_stack, 0);
 
     let nfa = nfa_stack.pop().unwrap();
-    let dfa = subset_construction(&nfa.nfa, nfa.first_state, nfa.last_state, &alphabet);
+    let dfa = subset_construction(&nfa, &alphabet);
 
     // serialize DFA to json and write to file
     let serialized = serde_json::to_string(&nfa).unwrap();
@@ -539,4 +576,9 @@ fn main() {
     println!("NFA: {} μs", nfa_duration);
     println!("DFA: {} μs", dfa_duration);
     println!("****************************************************************");
+
+    // file for each automaton
+    println!("{}", &nfa.to_string());
+    println!("");
+    println!("{}", &dfa.to_string());
 }

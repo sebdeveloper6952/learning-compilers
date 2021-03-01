@@ -1,9 +1,9 @@
 <template>
   <div class="container mt-4">
     <h1 class="title">Compis Proyecto 1</h1>
-    <h1 class="subtitle">Sebastian Arriola</h1>
+    <h1 class="subtitle">Sebastián Arriola</h1>
     <div class="columns is-centered">
-      <b-field class="file is-primary" :class="{ 'has-name': !!file }">
+      <b-field class="file is-info" :class="{ 'has-name': !!file }">
         <b-upload v-model="file" class="file-label" @input="onFileChange">
           <span class="file-cta">
             <b-icon class="file-icon" icon="upload"></b-icon>
@@ -15,11 +15,45 @@
         </b-upload>
       </b-field>
     </div>
+    <div class="columns is-centered">
+      <div class="column is-4">
+        <div class="card blue">
+          <div class="card-content">
+            <p class="title" style="color:white">
+              Los nodos azules son estados iniciales.
+            </p>
+          </div>
+        </div>
+      </div>
+      <div class="column is-4">
+        <div class="card red">
+          <div class="card-content">
+            <p class="title" style="color:white">
+              Los nodos rojos son estados finales.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="columns is-centered mt-4">
       <div id="mynetwork"></div>
     </div>
   </div>
 </template>
+
+<style lang="scss" scoped>
+#mynetwork {
+  border: 1px solid black;
+}
+
+.red {
+  background-color: #ff5733;
+}
+
+.blue {
+  background-color: #3377ff;
+}
+</style>
 
 <script>
 export default {
@@ -31,6 +65,7 @@ export default {
       graphJsonFile: {},
       nodes: [],
       edges: [],
+      alphabet: ["a", "b", "c", "ε"],
     };
   },
   methods: {
@@ -52,9 +87,12 @@ export default {
     },
     parseDfa() {
       for (const [key, value] of Object.entries(this.graphJsonFile.dfa)) {
-        const color = this.graphJsonFile.accepting_states.includes(Number(key))
-          ? "red"
-          : "black";
+        const color =
+          key == 0
+            ? "#3377ff"
+            : this.graphJsonFile.accepting_states.includes(Number(key))
+            ? "#ff5733"
+            : "black";
         this.nodes.push({
           id: key,
           label: key,
@@ -63,17 +101,15 @@ export default {
             color: "white",
           },
         });
-        this.edges.push({
-          from: key,
-          to: value["a"],
-          label: "a",
-          color: "black",
-        });
-        this.edges.push({
-          from: key,
-          to: value["b"],
-          label: "b",
-          color: "black",
+        this.alphabet.forEach((a) => {
+          if (value[a]) {
+            this.edges.push({
+              from: key,
+              to: value[a],
+              label: a,
+              color: "black",
+            });
+          }
         });
       }
 
@@ -93,6 +129,8 @@ export default {
           },
         },
       };
+
+      // create network
       const network = new vis.Network(container, data, options);
     },
 
@@ -100,9 +138,9 @@ export default {
       for (const [key, value] of Object.entries(this.graphJsonFile.nfa)) {
         const color =
           this.graphJsonFile.first_state == key
-            ? "blue"
+            ? "#3377ff"
             : this.graphJsonFile.last_state == key
-            ? "red"
+            ? "#ff5733"
             : "black";
         this.nodes.push({
           id: key,
@@ -113,9 +151,8 @@ export default {
           },
         });
 
-        const alphabet = ["a", "b", "ε"];
         const obj = this.graphJsonFile.nfa[key];
-        alphabet.forEach((a) => {
+        this.alphabet.forEach((a) => {
           if (obj[a]) {
             obj[a].forEach((to) => {
               this.edges.push({
@@ -128,6 +165,16 @@ export default {
           }
         });
       }
+
+      // node for last state
+      this.nodes.push({
+        id: this.graphJsonFile.last_state,
+        label: String(this.graphJsonFile.last_state),
+        color: "#ff5733",
+        font: {
+          color: "white",
+        },
+      });
 
       // create a network
       const container = document.getElementById("mynetwork");
