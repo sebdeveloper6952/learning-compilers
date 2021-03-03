@@ -18,6 +18,24 @@ fn hashset(data: &[u32]) -> HashSet<u32> {
     HashSet::from_iter(data.iter().cloned())
 }
 
+fn regex_insert_concat_op(regex: &String) -> String {
+    let mut new_regex = String::new();
+    let bytes = regex.as_bytes();
+    new_regex.push(bytes[0] as char);
+    for i in 1..bytes.len() {
+        let prev = bytes[i - 1] as char;
+        let curr = bytes[i] as char;
+        if prev.is_ascii_alphabetic() || prev == '*' || prev == ')' {
+            if curr.is_ascii_alphabetic() || curr == '(' {
+                new_regex.push('.');
+            }
+        }
+        new_regex.push(curr);
+    }
+
+    new_regex
+}
+
 /*
  * Is the char an operator?
  */
@@ -524,8 +542,13 @@ fn main() {
     }
 
     // program arguments
-    let regex: &String = &args[1];
+    let mut regex: &String = &args[1];
     let word: &String = &args[2];
+
+    // insert explicit concat operator into regex
+    println!("original regex {}", regex);
+    let regex = regex_insert_concat_op(&regex);
+    println!("regex: {}", regex);
 
     // global alphabet
     let mut letters = regex.clone();
