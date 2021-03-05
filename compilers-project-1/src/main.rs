@@ -44,6 +44,8 @@ fn is_op(c: char) -> bool {
         '*' => true,
         '.' => true,
         '|' => true,
+        '?' => true,
+        '+' => true,
         _ => false,
     }
 }
@@ -147,7 +149,7 @@ impl fmt::Display for Dfa {
         }
         write!(
             f,
-            "ESTADOS = {:?}\nSIMBOLOS = {:?}\nINICIO = {{}}\nACEPTACION = {{{:?}}}\nTRANSICION = {:?}",
+            "ESTADOS = {:?}\nSIMBOLOS = {:?}\nINICIO = {{0}}\nACEPTACION = {{{:?}}}\nTRANSICION = {:?}",
             states,
             vec!['a', 'b'],
             &self.accepting_states,
@@ -180,6 +182,8 @@ fn parse_regex(regex: &String) -> Node {
     precedences.insert('|', 1);
     precedences.insert('.', 2);
     precedences.insert('*', 3);
+    precedences.insert('?', 3);
+    precedences.insert('+', 3);
 
     // for each char in the regex
     for c in regex.chars() {
