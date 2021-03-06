@@ -26,7 +26,7 @@ fn regex_insert_concat_op(regex: &String) -> String {
         let prev = bytes[i - 1] as char;
         let curr = bytes[i] as char;
         if prev.is_ascii_alphabetic() || prev == '*' || prev == ')' {
-            if curr.is_ascii_alphabetic() || curr == '(' {
+            if curr.is_ascii_alphabetic() || curr == '#' || curr == '(' {
                 new_regex.push('.');
             }
         }
@@ -51,25 +51,53 @@ fn is_op(c: char) -> bool {
 }
 
 /*
+ * Is the char valid in our regular expressions?
+ */
+fn is_valid_regex_symbol(c: &char) -> bool {
+    c.is_ascii_alphabetic() || *c == '#'
+}
+
+fn depth_first_debug(root: Node) {
+    match root.left {
+        Some(n) => depth_first_debug(*n),
+        _ => (),
+    }
+    match root.right {
+        Some(n) => depth_first_debug(*n),
+        _ => (),
+    }
+    println!(
+        "symbol: {} | pos: {} | nullable: {} | firstpos: {:?} | lastpos: {:?} | followpos: {:?}",
+        root.symbol, root.position, root.nullable, root.firstpos, root.lastpos, root.followpos
+    );
+}
+
+/*
  * AST node representation
  */
 #[derive(Debug)]
 struct Node {
-    id: u32,
     symbol: char,
     left: Option<Box<Node>>,
     right: Option<Box<Node>>,
-    visited: bool,
+    position: u32,
+    nullable: bool,
+    firstpos: HashSet<u32>,
+    lastpos: HashSet<u32>,
+    followpos: HashSet<u32>,
 }
 
 impl Node {
-    fn new(id: u32, symbol: char) -> Node {
+    fn new(symbol: char, position: u32, nullable: bool) -> Node {
         Node {
-            id,
             symbol,
             left: None,
             right: None,
-            visited: false,
+            position: position,
+            nullable: nullable,
+            firstpos: HashSet::new(),
+            lastpos: HashSet::new(),
+            followpos: HashSet::new(),
         }
     }
 
@@ -79,6 +107,10 @@ impl Node {
 
     fn add_right_child(&mut self, child: Node) {
         self.right = Some(Box::new(child));
+    }
+
+    fn set_nullable(&mut self, nullable: bool) {
+        self.nullable = nullable;
     }
 }
 
@@ -167,14 +199,16 @@ impl fmt::Display for Dfa {
  * Input: a regex
  * Output: the node that represents the root of the tree
  *         the global alphabet is also updated
+ * The followpos table is also updated to be used later
+ * in the REGEX -> DFA algorithm.
  */
-fn parse_regex(regex: &String) -> Node {
+fn parse_regex(regex: &String, fp_table: &HashMap<u32, HashSet<u32>>) -> Node {
     // holds nodes
     let mut tree_stack: Vec<Node> = Vec::new();
     // holds operators and parentheses
     let mut op_stack: Vec<char> = Vec::new();
     // tree node id
-    let mut next_id: u32 = 0;
+    let mut next_position: u32 = 1;
     // hashmap of operators and precedences
     let mut precedences = HashMap::<char, u8>::new();
     // populate precedences
@@ -187,11 +221,20 @@ fn parse_regex(regex: &String) -> Node {
 
     // for each char in the regex
     for c in regex.chars() {
-        if c.is_ascii_alphabetic() {
+        if is_valid_regex_symbol(&c) {
             // build node for c and push into tree_stack
-            let n = Node::new(next_id, c);
+            let mut n = Node::new(c, next_position, false);
+            // firstpos of a symbol node is only its position
+            let mut hs = HashSet::new();
+            hs.insert(n.position);
+            n.firstpos = hs.clone();
+            // lastpos of a symbol node is only its position
+            n.lastpos = hs;
             tree_stack.push(n);
-            next_id += 1;
+            next_position += 1;
+        } else if c == EPSILON {
+            // insert node without position
+            tree_stack.push(Node::new(c, 0, true));
         } else if c == '(' {
             // push into op_stack
             op_stack.push(c);
@@ -206,23 +249,81 @@ fn parse_regex(regex: &String) -> Node {
                 }
 
                 // build node for operator
-                let mut n = Node::new(next_id, op);
-                next_id += 1;
+                let mut n = Node::new(op, 0, false);
                 if op == '|' {
                     // OR
                     let right = tree_stack.pop().unwrap();
                     let left = tree_stack.pop().unwrap();
+                    // compute nullable
+                    let nullable = left.nullable || right.nullable;
+                    n.set_nullable(nullable);
+                    // compute firstpos
+                    let union: HashSet<&u32> = left.firstpos.union(&right.firstpos).collect();
+                    let mut hs: HashSet<u32> = HashSet::new();
+                    for x in union {
+                        hs.insert(*x);
+                    }
+                    n.firstpos = hs.clone();
+                    // lastpos of OR node is the same as firstpos
+                    n.lastpos = hs;
+                    // add children
                     n.add_left_child(left);
                     n.add_right_child(right);
                 } else if op == '.' {
                     // CONCAT
+                    // pop children from stack
                     let right = tree_stack.pop().unwrap();
                     let left = tree_stack.pop().unwrap();
+                    // compute and set nullable
+                    let nullable = left.nullable && right.nullable;
+                    n.set_nullable(nullable);
+                    // compute firstpos
+                    let mut firstpos: HashSet<u32> = HashSet::new();
+                    if left.nullable {
+                        let union: HashSet<&u32> = left.firstpos.union(&right.firstpos).collect();
+                        for x in union {
+                            firstpos.insert(*x);
+                        }
+                    } else {
+                        for x in &left.firstpos {
+                            firstpos.insert(*x);
+                        }
+                    }
+                    n.firstpos = firstpos;
+                    // compute lastpos
+                    let mut lastpos: HashSet<u32> = HashSet::new();
+                    if left.nullable {
+                        let union: HashSet<&u32> = left.lastpos.union(&right.lastpos).collect();
+                        for x in union {
+                            lastpos.insert(*x);
+                        }
+                    } else {
+                        for x in &left.lastpos {
+                            lastpos.insert(*x);
+                        }
+                    }
+                    n.lastpos = lastpos;
+                    // add children
                     n.add_left_child(left);
                     n.add_right_child(right);
                 } else if op == '*' {
                     // KLEENE
                     let left = tree_stack.pop().unwrap();
+                    // firstpos of star node is the same as firstpos of its child
+                    let mut firstpos: HashSet<u32> = HashSet::new();
+                    for x in &left.firstpos {
+                        firstpos.insert(*x);
+                    }
+                    n.firstpos = firstpos;
+                    // lastpos is lastpos of child
+                    let mut lastpos: HashSet<u32> = HashSet::new();
+                    for x in &left.lastpos {
+                        lastpos.insert(*x);
+                    }
+                    n.lastpos = lastpos;
+                    // a star node is always nullable
+                    n.set_nullable(true);
+                    // add only child
                     n.add_left_child(left);
                 }
 
@@ -236,24 +337,80 @@ fn parse_regex(regex: &String) -> Node {
                 // pop top operator from stack
                 let top_op = op_stack.pop().unwrap();
                 // create new node for this operator
-                let mut n = Node::new(next_id, top_op);
-                next_id += 1;
+                let mut n = Node::new(top_op, 0, false);
                 if top_op == '|' {
                     // OR
                     let right = tree_stack.pop().unwrap();
                     let left = tree_stack.pop().unwrap();
+                    // compute nullable
+                    let nullable = left.nullable || right.nullable;
+                    n.set_nullable(nullable);
+                    // compute firstpos
+                    let union: HashSet<&u32> = left.firstpos.union(&right.firstpos).collect();
+                    let mut hs: HashSet<u32> = HashSet::new();
+                    for x in union {
+                        hs.insert(*x);
+                    }
+                    n.firstpos = hs.clone();
+                    // lastpos of OR node is the same as firstpos
+                    n.lastpos = hs;
                     n.add_left_child(left);
                     n.add_right_child(right);
                 } else if top_op == '.' {
                     // CONCAT
-                    // OR
                     let right = tree_stack.pop().unwrap();
                     let left = tree_stack.pop().unwrap();
+                    // compute nullable
+                    let nullable = left.nullable && right.nullable;
+                    n.set_nullable(nullable);
+                    // compute firstpos
+                    let mut firstpos: HashSet<u32> = HashSet::new();
+                    if left.nullable {
+                        let union: HashSet<&u32> = left.firstpos.union(&right.firstpos).collect();
+                        for x in union {
+                            firstpos.insert(*x);
+                        }
+                    } else {
+                        for x in &left.firstpos {
+                            firstpos.insert(*x);
+                        }
+                    }
+                    n.firstpos = firstpos;
+                    // compute lastpos
+                    let mut lastpos: HashSet<u32> = HashSet::new();
+                    if right.nullable {
+                        let union: HashSet<&u32> = left.lastpos.union(&right.lastpos).collect();
+                        for x in union {
+                            lastpos.insert(*x);
+                        }
+                    } else {
+                        for x in &right.lastpos {
+                            lastpos.insert(*x);
+                        }
+                    }
+                    n.lastpos = lastpos;
+                    // compute followpos
+                    // add children
                     n.add_left_child(left);
                     n.add_right_child(right);
                 } else if top_op == '*' {
                     // KLEENE
                     let left = tree_stack.pop().unwrap();
+                    // star node is always nullable
+                    n.set_nullable(true);
+                    // firstpos of star node is the same as firstpos of its child
+                    let mut firstpos: HashSet<u32> = HashSet::new();
+                    for x in &left.firstpos {
+                        firstpos.insert(*x);
+                    }
+                    n.firstpos = firstpos;
+                    // lastpos is lastpos of child
+                    let mut lastpos: HashSet<u32> = HashSet::new();
+                    for x in &left.lastpos {
+                        lastpos.insert(*x);
+                    }
+                    n.lastpos = lastpos;
+                    // add only child
                     n.add_left_child(left);
                 }
 
@@ -272,23 +429,78 @@ fn parse_regex(regex: &String) -> Node {
     // process remaining nodes in op_stack
     while !op_stack.is_empty() {
         let top_op = op_stack.pop().unwrap();
-        let mut n = Node::new(next_id, top_op);
-        next_id += 1;
+        let mut n = Node::new(top_op, 0, false);
         if top_op == '|' {
             // OR
             let right = tree_stack.pop().unwrap();
             let left = tree_stack.pop().unwrap();
+            // compute nullable
+            let nullable = left.nullable || right.nullable;
+            n.set_nullable(nullable);
+            // compute firstpos
+            let union: HashSet<&u32> = left.firstpos.union(&right.firstpos).collect();
+            let mut hs: HashSet<u32> = HashSet::new();
+            for x in union {
+                hs.insert(*x);
+            }
+            n.firstpos = hs.clone();
+            // lastpos of OR node is the same as firstpos
+            n.lastpos = hs;
             n.add_left_child(left);
             n.add_right_child(right);
         } else if top_op == '.' {
             // CONCAT
             let right = tree_stack.pop().unwrap();
             let left = tree_stack.pop().unwrap();
+            // compute nullable
+            let nullable = left.nullable && right.nullable;
+            n.set_nullable(nullable);
+            // compute firstpos
+            let mut firstpos: HashSet<u32> = HashSet::new();
+            if left.nullable {
+                let union: HashSet<&u32> = left.firstpos.union(&right.firstpos).collect();
+                for x in union {
+                    firstpos.insert(*x);
+                }
+            } else {
+                for x in &left.firstpos {
+                    firstpos.insert(*x);
+                }
+            }
+            n.firstpos = firstpos;
+            // compute lastpos
+            let mut lastpos: HashSet<u32> = HashSet::new();
+            if right.nullable {
+                let union: HashSet<&u32> = left.lastpos.union(&right.lastpos).collect();
+                for x in union {
+                    lastpos.insert(*x);
+                }
+            } else {
+                for x in &right.lastpos {
+                    lastpos.insert(*x);
+                }
+            }
+            n.lastpos = lastpos;
             n.add_left_child(left);
             n.add_right_child(right);
         } else if top_op == '*' {
             // KLEENE
             let left = tree_stack.pop().unwrap();
+            // star node is always nullable
+            n.set_nullable(true);
+            // firstpos of star node is the same as firstpos of its child
+            let mut firstpos: HashSet<u32> = HashSet::new();
+            for x in &left.firstpos {
+                firstpos.insert(*x);
+            }
+            n.firstpos = firstpos;
+            // lastpos is lastpos of child
+            let mut lastpos: HashSet<u32> = HashSet::new();
+            for x in &left.lastpos {
+                lastpos.insert(*x);
+            }
+            n.lastpos = lastpos;
+            // add only child
             n.add_left_child(left);
         }
         tree_stack.push(n);
@@ -314,7 +526,7 @@ fn thompson_algorithm(root: Node, stack: &mut Vec<Nfa>, next_state: u32) -> u32 
         None => i,
     };
 
-    if root.symbol.is_ascii_alphabetic() {
+    if is_valid_regex_symbol(&root.symbol) {
         let mut nfa: HashMap<u32, HashMap<char, HashSet<u32>>> = HashMap::new();
         let mut states_set = HashSet::new();
         states_set.insert(i + 1);
@@ -546,7 +758,7 @@ fn main() {
     }
 
     // program arguments
-    let mut regex: &String = &args[1];
+    let regex: &String = &args[1];
     let word: &String = &args[2];
 
     // insert explicit concat operator into regex
@@ -556,7 +768,7 @@ fn main() {
 
     // global alphabet
     let mut letters = regex.clone();
-    letters.retain(|c| (c.is_ascii_alphabetic() && c != EPSILON));
+    letters.retain(|c| (is_valid_regex_symbol(&c) && c != EPSILON));
     let alphabet: HashSet<char> = letters.chars().into_iter().collect();
 
     // validate word uses the same alphabet as the regex
@@ -566,46 +778,49 @@ fn main() {
         process::exit(1);
     }
 
-    // parse regex
-    let tree_root = parse_regex(&regex);
+    // 1. parse regex
+    let mut fp_table: HashMap<u32, HashSet<u32>> = HashMap::new();
+    let tree_root = parse_regex(&regex, &fp_table);
+    depth_first_debug(tree_root);
+    println!("{:?}", fp_table);
 
-    // thompson
-    let mut nfa_stack = Vec::new();
-    // thompson_algorithm(tree_stack.pop().unwrap(), &mut nfa_stack, 0);
-    thompson_algorithm(tree_root, &mut nfa_stack, 0);
+    // // thompson
+    // let mut nfa_stack = Vec::new();
+    // // thompson_algorithm(tree_stack.pop().unwrap(), &mut nfa_stack, 0);
+    // thompson_algorithm(tree_root, &mut nfa_stack, 0);
 
-    let nfa = nfa_stack.pop().unwrap();
-    let dfa = subset_construction(&nfa, &alphabet);
+    // let nfa = nfa_stack.pop().unwrap();
+    // let dfa = subset_construction(&nfa, &alphabet);
 
-    // serialize DFA to json and write to file
-    let serialized = serde_json::to_string(&nfa).unwrap();
-    fs::write("./nfa-graph.json", serialized).expect("Error writing to file.");
+    // // serialize DFA to json and write to file
+    // let serialized = serde_json::to_string(&nfa).unwrap();
+    // fs::write("./nfa-graph.json", serialized).expect("Error writing to file.");
 
-    // serialize DFA to json and write to file
-    let serialized = serde_json::to_string(&dfa).unwrap();
-    fs::write("./dfa-graph.json", serialized).expect("Error writing to file.");
+    // // serialize DFA to json and write to file
+    // let serialized = serde_json::to_string(&dfa).unwrap();
+    // fs::write("./dfa-graph.json", serialized).expect("Error writing to file.");
 
-    // nfa simulation
-    let nfa_start = Instant::now();
-    let nfa_accepts = nfa_simul(&nfa, &word);
-    let nfa_duration = nfa_start.elapsed().as_micros();
+    // // nfa simulation
+    // let nfa_start = Instant::now();
+    // let nfa_accepts = nfa_simul(&nfa, &word);
+    // let nfa_duration = nfa_start.elapsed().as_micros();
 
-    let dfa_start = Instant::now();
-    let dfa_accepts = dfa_simul(&dfa, &word);
-    let dfa_duration = dfa_start.elapsed().as_micros();
+    // let dfa_start = Instant::now();
+    // let dfa_accepts = dfa_simul(&dfa, &word);
+    // let dfa_duration = dfa_start.elapsed().as_micros();
 
-    // Info
-    println!("The alphabet found in the regex is: {:?}", alphabet);
-    println!("NFA accepts '{}' -> {}'", &word, nfa_accepts);
-    // simulate dfa with word
-    println!("DFA accepts '{}' -> {}'", &word, dfa_accepts);
-    println!("**************************** Timing ****************************");
-    println!("NFA: {} μs", nfa_duration);
-    println!("DFA: {} μs", dfa_duration);
-    println!("****************************************************************");
+    // // Info
+    // println!("The alphabet found in the regex is: {:?}", alphabet);
+    // println!("NFA accepts '{}' -> {}'", &word, nfa_accepts);
+    // // simulate dfa with word
+    // println!("DFA accepts '{}' -> {}'", &word, dfa_accepts);
+    // println!("**************************** Timing ****************************");
+    // println!("NFA: {} μs", nfa_duration);
+    // println!("DFA: {} μs", dfa_duration);
+    // println!("****************************************************************");
 
-    // file for each automaton
-    println!("{}", &nfa.to_string());
-    println!("");
-    println!("{}", &dfa.to_string());
+    // // file for each automaton
+    // println!("{}", &nfa.to_string());
+    // println!("");
+    // println!("{}", &dfa.to_string());
 }
