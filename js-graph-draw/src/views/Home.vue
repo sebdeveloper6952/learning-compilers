@@ -65,7 +65,7 @@ export default {
       graphJsonFile: {},
       nodes: [],
       edges: [],
-      alphabet: ["a", "b", "c", "ε", "#"],
+      alphabet: ["a", "b", "c", "$", "#"],
     };
   },
   methods: {

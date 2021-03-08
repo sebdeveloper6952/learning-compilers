@@ -9,7 +9,7 @@ use std::time::Instant;
 
 // Global variables
 // the representation of the Epsilon character
-const EPSILON: char = 'ε';
+const EPSILON: char = '$';
 
 /*
  * Utility function to create hashset from u8 slice.
@@ -18,6 +18,10 @@ fn hashset(data: &[u32]) -> HashSet<u32> {
     HashSet::from_iter(data.iter().cloned())
 }
 
+/*
+ * Insert an explicit concatenation operator ('.') into the regular
+ * expression so parsing it is easier.
+*/
 fn regex_insert_concat_op(regex: &String) -> String {
     let mut new_regex = String::new();
     let bytes = regex.as_bytes();
@@ -31,6 +35,61 @@ fn regex_insert_concat_op(regex: &String) -> String {
             }
         }
         new_regex.push(curr);
+    }
+
+    new_regex
+}
+
+/**
+ * Process the extension operators of regexes:
+ *  - '+'
+ *  - '?'
+ */
+fn preprocess_regex(regex: &String) -> String {
+    let mut new_regex = String::new();
+    let mut stack = Vec::new();
+    let bytes = regex.as_bytes();
+    for i in 0..bytes.len() {
+        let curr = bytes[i] as char;
+        if curr == '+' {
+            let top = stack.pop().unwrap();
+            if top == ')' {
+                let mut temp = String::new();
+                while !stack.is_empty() {
+                    temp.insert(0, stack.pop().unwrap());
+                }
+                for c in temp.chars() {
+                    new_regex.push(c);
+                }
+                new_regex.push_str(&format!(")*"));
+                continue;
+            } else {
+                new_regex.push_str(&format!("{}*", top));
+            }
+        } else if curr == '?' {
+            let top = stack.pop().unwrap();
+            if top == ')' {
+                let mut temp = String::new();
+                while !stack.is_empty() {
+                    new_regex.pop();
+                    temp.insert(0, stack.pop().unwrap());
+                }
+                temp.push(')');
+                for c in temp.chars() {
+                    new_regex.push(c);
+                }
+                new_regex.push_str(&format!("|{})", EPSILON));
+                continue;
+            } else {
+                new_regex.pop();
+                new_regex.push_str(&format!("({}|{})", top, EPSILON));
+            }
+        } else {
+            // push char to stack
+            stack.push(curr);
+            // add char to preprocessed regex
+            new_regex.push(curr);
+        }
     }
 
     new_regex
@@ -54,7 +113,7 @@ fn is_op(c: char) -> bool {
  * Is the char valid in our regular expressions?
  */
 fn is_valid_regex_symbol(c: &char) -> bool {
-    c.is_ascii_alphabetic() || *c == '#'
+    c.is_ascii_alphabetic() || *c == '#' || *c == EPSILON
 }
 
 /*
@@ -79,7 +138,7 @@ fn depth_first_debug(root: &Node) {
 /*
  * AST node representation
  */
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Node {
     symbol: char,
     left: Option<Box<Node>>,
@@ -222,8 +281,6 @@ fn parse_regex(
     precedences.insert('|', 1);
     precedences.insert('.', 2);
     precedences.insert('*', 3);
-    precedences.insert('?', 3);
-    precedences.insert('+', 3);
 
     // for each char in the regex
     for c in regex.chars() {
@@ -468,6 +525,8 @@ fn parse_regex(
 
             // push to op_stack
             op_stack.push(c);
+        } else if c == EPSILON {
+            continue;
         } else {
             // expression error
             panic!("Invalid charcter found in expression.");
@@ -570,6 +629,7 @@ fn parse_regex(
             // add only child
             n.add_left_child(left);
         }
+        // add node to tree stack
         tree_stack.push(n);
     }
 
@@ -877,7 +937,9 @@ fn nfa_simul(nfa: &Nfa, word: &String) -> bool {
 fn dfa_simul(dfa: &Dfa, word: &String) -> bool {
     let mut curr_state = 0;
     for c in word.chars() {
-        curr_state = dfa.dfa[&curr_state][&c];
+        if dfa.dfa[&curr_state].contains_key(&c) {
+            curr_state = dfa.dfa[&curr_state][&c];
+        }
     }
 
     dfa.accepting_states.contains(&curr_state)
@@ -898,7 +960,8 @@ fn main() {
     let word: &String = &args[2];
 
     // insert explicit concat operator into regex
-    let proc_regex = regex_insert_concat_op(&regex);
+    let mut proc_regex = preprocess_regex(&regex);
+    proc_regex = regex_insert_concat_op(&proc_regex);
     let mut ex_proc_regex = proc_regex.clone();
     ex_proc_regex.push_str(".#");
 
@@ -909,13 +972,13 @@ fn main() {
 
     // extended alphabet
     let mut ex_letters = proc_regex.clone();
-    ex_letters.retain(|c| (is_valid_regex_symbol(&c) && c != EPSILON));
-    let ex_alphabet: HashSet<char> = letters.chars().into_iter().collect();
+    ex_letters.retain(|c| (is_valid_regex_symbol(&c) || c == EPSILON));
+    let ex_alphabet: HashSet<char> = ex_letters.chars().into_iter().collect();
 
     // validate word uses the same alphabet as the regex
     let word_alphabet: HashSet<char> = word.clone().chars().into_iter().collect();
-    if alphabet.intersection(&word_alphabet).count() != word_alphabet.len() {
-        println!("Invalid character found in word");
+    if ex_alphabet.intersection(&word_alphabet).count() != word_alphabet.len() {
+        println!("Invalid character found in word.");
         process::exit(1);
     }
 
@@ -953,17 +1016,17 @@ fn main() {
     // nfa simulation
     let nfa_start = Instant::now();
     let nfa_accepts = nfa_simul(&nfa, &word);
-    let nfa_duration = nfa_start.elapsed().as_micros();
+    let nfa_duration = nfa_start.elapsed().as_nanos();
 
     // dfa simulation
     let dfa_start = Instant::now();
     let dfa_accepts = dfa_simul(&dfa, &word);
-    let dfa_duration = dfa_start.elapsed().as_micros();
+    let dfa_duration = dfa_start.elapsed().as_nanos();
 
     // direct dfa simulation
     let ddfa_start = Instant::now();
     let ddfa_accepts = dfa_simul(&direct_dfa, &word);
-    let ddfa_duration = ddfa_start.elapsed().as_micros();
+    let ddfa_duration = ddfa_start.elapsed().as_nanos();
 
     // Info
     println!("************************** Regex Info ******************************");
@@ -974,9 +1037,9 @@ fn main() {
     println!("NFA accepts        '{}' -> {}", &word, nfa_accepts);
     println!("DFA accepts        '{}' -> {}", &word, dfa_accepts);
     println!("Direct DFA accepts '{}' -> {}", &word, ddfa_accepts);
-    println!("**************************** Timing ********************************");
-    println!("NFA:        {} μs", nfa_duration);
-    println!("DFA:        {} μs", dfa_duration);
-    println!("Direct DFA: {} μs", ddfa_duration);
+    println!("**********************  Simulation Timing **************************");
+    println!("NFA:        {} nanoseconds", nfa_duration);
+    println!("DFA:        {} nanoseconds", dfa_duration);
+    println!("Direct DFA: {} nanoseconds", ddfa_duration);
     println!("********************************************************************");
 }
