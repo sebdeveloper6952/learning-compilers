@@ -162,6 +162,77 @@ impl Node {
         }
     }
 
+    /**
+     * Create a new node to represent the UNION operator.
+     */
+    fn new_union_node(left: Node, right: Node) -> Node {
+        // create new node
+        let mut new_node = Node::new('|', 0, false);
+        // compute nullable
+        let nullable = left.nullable || right.nullable;
+        new_node.set_nullable(nullable);
+        // compute firstpos
+        let union: HashSet<&u32> = left.firstpos.union(&right.firstpos).collect();
+        let mut hs: HashSet<u32> = HashSet::new();
+        for x in union {
+            hs.insert(*x);
+        }
+        new_node.firstpos = hs.clone();
+        // lastpos of OR node is the same as firstpos
+        new_node.lastpos = hs;
+        // add children
+        new_node.add_left_child(left);
+        new_node.add_right_child(right);
+
+        new_node
+    }
+
+    /**
+     * Create a new node to represent the CONCATENATION
+     * operator.
+     */
+    fn new_concat_node(
+        left: Node, 
+        right: Node
+    ) -> Node {
+        // new node instance
+        let mut new_node = Node::new('.', 0, false);
+        // compute and set nullable
+        let nullable = left.nullable && right.nullable;
+        new_node.set_nullable(nullable);
+        // compute firstpos
+        let mut firstpos: HashSet<u32> = HashSet::new();
+        if left.nullable {
+            let union: HashSet<&u32> = left.firstpos.union(&right.firstpos).collect();
+            for x in union {
+                firstpos.insert(*x);
+            }
+        } else {
+            for x in &left.firstpos {
+                firstpos.insert(*x);
+            }
+        }
+        new_node.firstpos = firstpos;
+        // compute lastpos
+        let mut lastpos: HashSet<u32> = HashSet::new();
+        if left.nullable {
+            let union: HashSet<&u32> = left.lastpos.union(&right.lastpos).collect();
+            for x in union {
+                lastpos.insert(*x);
+            }
+        } else {
+            for x in &left.lastpos {
+                lastpos.insert(*x);
+            }
+        }
+        new_node.lastpos = lastpos;
+        // add children
+        new_node.add_left_child(left);
+        new_node.add_right_child(right);
+
+        new_node
+    }
+
     fn add_left_child(&mut self, child: Node) {
         self.left = Some(Box::new(child));
     }
@@ -302,9 +373,6 @@ fn parse_regex(
             tree_stack.push(n);
             // increment next symbol node position
             next_position += 1;
-        } else if c == EPSILON {
-            // insert node without position
-            tree_stack.push(Node::new(c, 0, true));
         } else if c == '(' {
             // push into op_stack
             op_stack.push(c);
@@ -322,6 +390,10 @@ fn parse_regex(
                 let mut n = Node::new(op, 0, false);
                 if op == '|' {
                     // OR
+                    // let right = tree_stack.pop().unwrap();
+                    // let left = tree_stack.pop().unwrap();
+                    // tree_stack.push(Node::new_union_node(left, right));
+                    // continue;
                     let right = tree_stack.pop().unwrap();
                     let left = tree_stack.pop().unwrap();
                     // compute nullable
@@ -342,6 +414,20 @@ fn parse_regex(
                 } else if op == '.' {
                     // CONCAT
                     // pop children from stack
+                    // let right = tree_stack.pop().unwrap();
+                    // let left = tree_stack.pop().unwrap();
+                    // for x in &left.lastpos {
+                    //     if !fp_table.contains_key(&x) {
+                    //         fp_table.insert(*x, HashSet::new());
+                    //     }
+                    //     for y in &right.firstpos {
+                    //         fp_table.get_mut(&x).unwrap().insert(*y);
+                    //     }
+                    // }
+                    // let new_node = Node::new_concat_node(left, right);
+                    // tree_stack.push(new_node);
+                    // continue;
+                    // CONCAT
                     let right = tree_stack.pop().unwrap();
                     let left = tree_stack.pop().unwrap();
                     // compute and set nullable
@@ -428,6 +514,11 @@ fn parse_regex(
                 let mut n = Node::new(top_op, 0, false);
                 if top_op == '|' {
                     // OR
+                    // let right = tree_stack.pop().unwrap();
+                    // let left = tree_stack.pop().unwrap();
+                    // tree_stack.push(Node::new_union_node(left, right));
+                    // continue;
+                    // OR
                     let right = tree_stack.pop().unwrap();
                     let left = tree_stack.pop().unwrap();
                     // compute nullable
@@ -445,6 +536,17 @@ fn parse_regex(
                     n.add_left_child(left);
                     n.add_right_child(right);
                 } else if top_op == '.' {
+                    // let right = tree_stack.pop().unwrap();
+                    // let left = tree_stack.pop().unwrap();
+                    // for x in &left.lastpos {
+                    //     if !fp_table.contains_key(&x) {
+                    //         fp_table.insert(*x, HashSet::new());
+                    //     }
+                    //     for y in &right.firstpos {
+                    //         fp_table.get_mut(&x).unwrap().insert(*y);
+                    //     }
+                    // }
+                    // n = Node::new_concat_node(left, right);
                     // CONCAT
                     let right = tree_stack.pop().unwrap();
                     let left = tree_stack.pop().unwrap();
@@ -529,7 +631,7 @@ fn parse_regex(
             continue;
         } else {
             // expression error
-            panic!("Invalid charcter found in expression.");
+            panic!("Invalid character found in expression.");
         }
     }
 
@@ -538,6 +640,11 @@ fn parse_regex(
         let top_op = op_stack.pop().unwrap();
         let mut n = Node::new(top_op, 0, false);
         if top_op == '|' {
+            // OR
+            // let right = tree_stack.pop().unwrap();
+            // let left = tree_stack.pop().unwrap();
+            // tree_stack.push(Node::new_union_node(left, right));
+            // continue;
             // OR
             let right = tree_stack.pop().unwrap();
             let left = tree_stack.pop().unwrap();
@@ -556,6 +663,19 @@ fn parse_regex(
             n.add_left_child(left);
             n.add_right_child(right);
         } else if top_op == '.' {
+            // let right = tree_stack.pop().unwrap();
+            // let left = tree_stack.pop().unwrap();
+            // for x in &left.lastpos {
+            //     if !fp_table.contains_key(&x) {
+            //         fp_table.insert(*x, HashSet::new());
+            //     }
+            //     for y in &right.firstpos {
+            //         fp_table.get_mut(&x).unwrap().insert(*y);
+            //     }
+            // }
+            // let new_node = Node::new_concat_node(left, right);
+            // tree_stack.push(new_node);
+            // continue;
             // CONCAT
             let right = tree_stack.pop().unwrap();
             let left = tree_stack.pop().unwrap();
