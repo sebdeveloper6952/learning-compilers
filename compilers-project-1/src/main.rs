@@ -338,6 +338,29 @@ impl fmt::Display for Dfa {
     }
 }
 
+#[derive(Serialize)]
+enum FAType {
+    DFA(Dfa),
+    NFA(Nfa),
+}
+
+#[derive(Serialize)]
+struct FAFile {
+    alphabet: HashSet<char>,
+    regex: String,
+    fa: FAType,
+}
+
+impl FAFile {
+    fn new(alphabet: HashSet<char>, regex: String, fa: FAType) -> FAFile {
+        FAFile {
+            alphabet,
+            regex,
+            fa,
+        }
+    }
+}
+
 // ***************************************** Regex Parse and Tree *****************************************
 /*
  * loop through input regex to build the Abstract Syntax Tree for the regex.
@@ -857,13 +880,15 @@ fn main() {
     let regex: &String = &args[1];
     let word: &String = &args[2];
 
-    // insert explicit concat operator into regex
+    // replace '?' and '+' operators by the basic operators
     let mut proc_regex = preprocess_regex(&regex);
+    // insert explicit concat operator into regex
     proc_regex = regex_insert_concat_op(&proc_regex);
+    // build the extended regex used for the regex_dfa algorithm
     let mut ex_proc_regex = proc_regex.clone();
     ex_proc_regex.push_str(".#");
 
-    // global alphabet
+    // create the alphabet using the symbols in the regex
     let mut letters = regex.clone();
     letters.retain(|c| (is_valid_regex_symbol(&c) && c != EPSILON));
     let alphabet: HashSet<char> = letters.chars().into_iter().collect();
@@ -928,6 +953,17 @@ fn main() {
     let ddfa_start = Instant::now();
     let ddfa_accepts = dfa_simul(&direct_dfa, &word);
     let ddfa_duration = ddfa_start.elapsed().as_nanos();
+
+    // write files
+    let dfa_file = FAFile::new(alphabet.clone(), regex.to_string(), FAType::DFA(dfa));
+    let serialized = serde_json::to_string(&dfa_file).unwrap();
+    fs::write("./dfa.json", serialized).expect("Error writing to file.");
+    let nfa_file = FAFile::new(alphabet.clone(), regex.to_string(), FAType::NFA(nfa));
+    let serialized = serde_json::to_string(&nfa_file).unwrap();
+    fs::write("./nfa.json", serialized).expect("Error writing to file.");
+    let ddfa_file = FAFile::new(alphabet.clone(), regex.to_string(), FAType::DFA(direct_dfa));
+    let serialized = serde_json::to_string(&ddfa_file).unwrap();
+    fs::write("./direct-dfa.json", serialized).expect("Error writing to file.");
 
     // Info
     println!("************************** Regex Info ******************************");

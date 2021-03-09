@@ -36,6 +36,9 @@
       </div>
     </div>
     <div class="columns is-centered mt-4">
+      <p class="title">{{ regex }}</p>
+    </div>
+    <div class="columns is-centered mt-4">
       <div id="mynetwork"></div>
     </div>
   </div>
@@ -65,7 +68,8 @@ export default {
       graphJsonFile: {},
       nodes: [],
       edges: [],
-      alphabet: ["a", "b", "c", "$", "#"],
+      alphabet: [],
+      regex: "",
     };
   },
   methods: {
@@ -79,18 +83,25 @@ export default {
       reader.readAsText(file);
     },
     parseJsonIntoGraph() {
+      this.alphabet = [];
+      this.regex = "";
       this.nodes = [];
       this.edges = [];
-      if (this.graphJsonFile.dfa) this.parseDfa();
-      else if (this.graphJsonFile.nfa) this.parseNfa();
+      this.alphabet = this.graphJsonFile.alphabet;
+      this.alphabet.push("$");
+      this.regex = this.graphJsonFile.regex;
       this.file = {};
+      if (this.graphJsonFile.fa.DFA) this.parseDfa();
+      else if (this.graphJsonFile.fa.NFA) this.parseNfa();
     },
     parseDfa() {
-      for (const [key, value] of Object.entries(this.graphJsonFile.dfa)) {
+      const dfa = this.graphJsonFile.fa.DFA.dfa;
+      const acceptingStates = this.graphJsonFile.fa.DFA.accepting_states;
+      for (const [key, value] of Object.entries(dfa)) {
         const color =
           key == 0
             ? "#3377ff"
-            : this.graphJsonFile.accepting_states.includes(Number(key))
+            : acceptingStates.includes(Number(key))
             ? "#ff5733"
             : "black";
         this.nodes.push({
@@ -135,11 +146,14 @@ export default {
     },
 
     parseNfa() {
-      for (const [key, value] of Object.entries(this.graphJsonFile.nfa)) {
+      const nfa = this.graphJsonFile.fa.NFA.nfa;
+      const startState = this.graphJsonFile.fa.NFA.first_state;
+      const lastState = this.graphJsonFile.fa.NFA.last_state;
+      for (const [key, value] of Object.entries(nfa)) {
         const color =
-          this.graphJsonFile.first_state == key
+          startState == key
             ? "#3377ff"
-            : this.graphJsonFile.last_state == key
+            : lastState == key
             ? "#ff5733"
             : "black";
         this.nodes.push({
@@ -151,7 +165,7 @@ export default {
           },
         });
 
-        const obj = this.graphJsonFile.nfa[key];
+        const obj = nfa[key];
         this.alphabet.forEach((a) => {
           if (obj[a]) {
             obj[a].forEach((to) => {
@@ -168,8 +182,8 @@ export default {
 
       // node for last state
       this.nodes.push({
-        id: this.graphJsonFile.last_state,
-        label: String(this.graphJsonFile.last_state),
+        id: lastState,
+        label: String(lastState),
         color: "#ff5733",
         font: {
           color: "white",
