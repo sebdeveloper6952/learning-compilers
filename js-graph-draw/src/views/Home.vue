@@ -19,7 +19,7 @@
       <div class="column is-4">
         <div class="card blue">
           <div class="card-content">
-            <p class="title" style="color:white">
+            <p class="subtitle" style="color:white">
               Los nodos azules son estados iniciales.
             </p>
           </div>
@@ -28,18 +28,27 @@
       <div class="column is-4">
         <div class="card red">
           <div class="card-content">
-            <p class="title" style="color:white">
+            <p class="subtitle" style="color:white">
               Los nodos rojos son estados finales.
             </p>
           </div>
         </div>
       </div>
     </div>
-    <div class="columns is-centered mt-4">
-      <p class="title">{{ regex }}</p>
+    <div class="columns is-centered">
+      <div class="column is-8">
+        <b-notification v-if="faType" type="is-info" has-icon :closable="false">
+          {{ faType }} para
+          <p class="title">{{ regex }}</p>
+        </b-notification>
+      </div>
     </div>
     <div class="columns is-centered mt-4">
-      <div id="mynetwork"></div>
+      <div class="card custom-card">
+        <div class="card-content">
+          <div style="border-radius: 5px;" id="mynetwork"></div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -56,6 +65,11 @@
 .blue {
   background-color: #3377ff;
 }
+
+.custom-card {
+  background-color: #e9e9e9;
+  padding: 2px;
+}
 </style>
 
 <script>
@@ -70,6 +84,7 @@ export default {
       edges: [],
       alphabet: [],
       regex: "",
+      faType: false,
     };
   },
   methods: {
@@ -95,6 +110,7 @@ export default {
       else if (this.graphJsonFile.fa.NFA) this.parseNfa();
     },
     parseDfa() {
+      this.faType = "DFA";
       const dfa = this.graphJsonFile.fa.DFA.dfa;
       const acceptingStates = this.graphJsonFile.fa.DFA.accepting_states;
       for (const [key, value] of Object.entries(dfa)) {
@@ -146,6 +162,7 @@ export default {
     },
 
     parseNfa() {
+      this.faType = "NFA";
       const nfa = this.graphJsonFile.fa.NFA.nfa;
       const startState = this.graphJsonFile.fa.NFA.first_state;
       const lastState = this.graphJsonFile.fa.NFA.last_state;

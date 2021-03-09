@@ -927,18 +927,6 @@ fn main() {
     let nfa = nfa_stack.pop().unwrap();
     let dfa = subset_construction(&nfa, &alphabet);
 
-    // serialize Direct DFA to json and write to file
-    let serialized = serde_json::to_string(&direct_dfa).unwrap();
-    fs::write("./direct-dfa-graph.json", serialized).expect("Error writing to file.");
-
-    // serialize DFA to json and write to file
-    let serialized = serde_json::to_string(&nfa).unwrap();
-    fs::write("./nfa-graph.json", serialized).expect("Error writing to file.");
-
-    // serialize DFA to json and write to file
-    let serialized = serde_json::to_string(&dfa).unwrap();
-    fs::write("./dfa-graph.json", serialized).expect("Error writing to file.");
-
     // nfa simulation
     let nfa_start = Instant::now();
     let nfa_accepts = nfa_simul(&nfa, &word);
