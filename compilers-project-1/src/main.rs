@@ -113,7 +113,7 @@ fn is_op(c: char) -> bool {
  * Is the char valid in our regular expressions?
  */
 fn is_valid_regex_symbol(c: &char) -> bool {
-    c.is_ascii_alphabetic() || *c == '#' || *c == EPSILON
+    c.is_ascii_alphanumeric() || *c == '#' || *c == EPSILON
 }
 
 /*
@@ -191,10 +191,7 @@ impl Node {
      * Create a new node to represent the CONCATENATION
      * operator.
      */
-    fn new_concat_node(
-        left: Node, 
-        right: Node
-    ) -> Node {
+    fn new_concat_node(left: Node, right: Node) -> Node {
         // new node instance
         let mut new_node = Node::new('.', 0, false);
         // compute and set nullable
@@ -215,13 +212,13 @@ impl Node {
         new_node.firstpos = firstpos;
         // compute lastpos
         let mut lastpos: HashSet<u32> = HashSet::new();
-        if left.nullable {
+        if right.nullable {
             let union: HashSet<&u32> = left.lastpos.union(&right.lastpos).collect();
             for x in union {
                 lastpos.insert(*x);
             }
         } else {
-            for x in &left.lastpos {
+            for x in &right.lastpos {
                 lastpos.insert(*x);
             }
         }
@@ -229,6 +226,25 @@ impl Node {
         // add children
         new_node.add_left_child(left);
         new_node.add_right_child(right);
+
+        new_node
+    }
+
+    fn new_star_node(left: Node) -> Node {
+        let mut new_node = Node::new('*', 0, true);
+        // firstpos of star node is the same as firstpos of its child
+        let mut firstpos: HashSet<u32> = HashSet::new();
+        for x in &left.firstpos {
+            firstpos.insert(*x);
+        }
+        new_node.firstpos = firstpos;
+        // lastpos is lastpos of child
+        let mut lastpos: HashSet<u32> = HashSet::new();
+        for x in &left.lastpos {
+            lastpos.insert(*x);
+        }
+        new_node.lastpos = lastpos;
+        new_node.add_left_child(left);
 
         new_node
     }
@@ -390,75 +406,12 @@ fn parse_regex(
                 let mut n = Node::new(op, 0, false);
                 if op == '|' {
                     // OR
-                    // let right = tree_stack.pop().unwrap();
-                    // let left = tree_stack.pop().unwrap();
-                    // tree_stack.push(Node::new_union_node(left, right));
-                    // continue;
                     let right = tree_stack.pop().unwrap();
                     let left = tree_stack.pop().unwrap();
-                    // compute nullable
-                    let nullable = left.nullable || right.nullable;
-                    n.set_nullable(nullable);
-                    // compute firstpos
-                    let union: HashSet<&u32> = left.firstpos.union(&right.firstpos).collect();
-                    let mut hs: HashSet<u32> = HashSet::new();
-                    for x in union {
-                        hs.insert(*x);
-                    }
-                    n.firstpos = hs.clone();
-                    // lastpos of OR node is the same as firstpos
-                    n.lastpos = hs;
-                    // add children
-                    n.add_left_child(left);
-                    n.add_right_child(right);
+                    n = Node::new_union_node(left, right);
                 } else if op == '.' {
-                    // CONCAT
-                    // pop children from stack
-                    // let right = tree_stack.pop().unwrap();
-                    // let left = tree_stack.pop().unwrap();
-                    // for x in &left.lastpos {
-                    //     if !fp_table.contains_key(&x) {
-                    //         fp_table.insert(*x, HashSet::new());
-                    //     }
-                    //     for y in &right.firstpos {
-                    //         fp_table.get_mut(&x).unwrap().insert(*y);
-                    //     }
-                    // }
-                    // let new_node = Node::new_concat_node(left, right);
-                    // tree_stack.push(new_node);
-                    // continue;
-                    // CONCAT
                     let right = tree_stack.pop().unwrap();
                     let left = tree_stack.pop().unwrap();
-                    // compute and set nullable
-                    let nullable = left.nullable && right.nullable;
-                    n.set_nullable(nullable);
-                    // compute firstpos
-                    let mut firstpos: HashSet<u32> = HashSet::new();
-                    if left.nullable {
-                        let union: HashSet<&u32> = left.firstpos.union(&right.firstpos).collect();
-                        for x in union {
-                            firstpos.insert(*x);
-                        }
-                    } else {
-                        for x in &left.firstpos {
-                            firstpos.insert(*x);
-                        }
-                    }
-                    n.firstpos = firstpos;
-                    // compute lastpos
-                    let mut lastpos: HashSet<u32> = HashSet::new();
-                    if left.nullable {
-                        let union: HashSet<&u32> = left.lastpos.union(&right.lastpos).collect();
-                        for x in union {
-                            lastpos.insert(*x);
-                        }
-                    } else {
-                        for x in &left.lastpos {
-                            lastpos.insert(*x);
-                        }
-                    }
-                    n.lastpos = lastpos;
                     // update followpos table
                     for x in &left.lastpos {
                         if !fp_table.contains_key(&x) {
@@ -468,26 +421,10 @@ fn parse_regex(
                             fp_table.get_mut(&x).unwrap().insert(*y);
                         }
                     }
-                    // add children
-                    n.add_left_child(left);
-                    n.add_right_child(right);
+                    n = Node::new_concat_node(left, right);
                 } else if op == '*' {
-                    // KLEENE
                     let left = tree_stack.pop().unwrap();
-                    // a star node is always nullable
-                    n.set_nullable(true);
-                    // firstpos of star node is the same as firstpos of its child
-                    let mut firstpos: HashSet<u32> = HashSet::new();
-                    for x in &left.firstpos {
-                        firstpos.insert(*x);
-                    }
-                    n.firstpos = firstpos;
-                    // lastpos is lastpos of child
-                    let mut lastpos: HashSet<u32> = HashSet::new();
-                    for x in &left.lastpos {
-                        lastpos.insert(*x);
-                    }
-                    n.lastpos = lastpos;
+                    n = Node::new_star_node(left);
                     // update followpos table
                     for x in &n.lastpos {
                         if !fp_table.contains_key(x) {
@@ -497,8 +434,6 @@ fn parse_regex(
                             fp_table.get_mut(x).unwrap().insert(*y);
                         }
                     }
-                    // add only child
-                    n.add_left_child(left);
                 }
 
                 // push new node into tree
@@ -514,71 +449,12 @@ fn parse_regex(
                 let mut n = Node::new(top_op, 0, false);
                 if top_op == '|' {
                     // OR
-                    // let right = tree_stack.pop().unwrap();
-                    // let left = tree_stack.pop().unwrap();
-                    // tree_stack.push(Node::new_union_node(left, right));
-                    // continue;
-                    // OR
                     let right = tree_stack.pop().unwrap();
                     let left = tree_stack.pop().unwrap();
-                    // compute nullable
-                    let nullable = left.nullable || right.nullable;
-                    n.set_nullable(nullable);
-                    // compute firstpos
-                    let union: HashSet<&u32> = left.firstpos.union(&right.firstpos).collect();
-                    let mut hs: HashSet<u32> = HashSet::new();
-                    for x in union {
-                        hs.insert(*x);
-                    }
-                    n.firstpos = hs.clone();
-                    // lastpos of OR node is the same as firstpos
-                    n.lastpos = hs;
-                    n.add_left_child(left);
-                    n.add_right_child(right);
+                    n = Node::new_union_node(left, right);
                 } else if top_op == '.' {
-                    // let right = tree_stack.pop().unwrap();
-                    // let left = tree_stack.pop().unwrap();
-                    // for x in &left.lastpos {
-                    //     if !fp_table.contains_key(&x) {
-                    //         fp_table.insert(*x, HashSet::new());
-                    //     }
-                    //     for y in &right.firstpos {
-                    //         fp_table.get_mut(&x).unwrap().insert(*y);
-                    //     }
-                    // }
-                    // n = Node::new_concat_node(left, right);
-                    // CONCAT
                     let right = tree_stack.pop().unwrap();
                     let left = tree_stack.pop().unwrap();
-                    // compute nullable
-                    let nullable = left.nullable && right.nullable;
-                    n.set_nullable(nullable);
-                    // compute firstpos
-                    let mut firstpos: HashSet<u32> = HashSet::new();
-                    if left.nullable {
-                        let union: HashSet<&u32> = left.firstpos.union(&right.firstpos).collect();
-                        for x in union {
-                            firstpos.insert(*x);
-                        }
-                    } else {
-                        for x in &left.firstpos {
-                            firstpos.insert(*x);
-                        }
-                    }
-                    n.firstpos = firstpos;
-                    // compute lastpos
-                    let mut lastpos: HashSet<u32> = HashSet::new();
-                    if right.nullable {
-                        let union: HashSet<&u32> = left.lastpos.union(&right.lastpos).collect();
-                        for x in union {
-                            lastpos.insert(*x);
-                        }
-                    } else {
-                        for x in &right.lastpos {
-                            lastpos.insert(*x);
-                        }
-                    }
-                    n.lastpos = lastpos;
                     // update followpos table
                     for x in &left.lastpos {
                         if !fp_table.contains_key(&x) {
@@ -588,26 +464,10 @@ fn parse_regex(
                             fp_table.get_mut(&x).unwrap().insert(*y);
                         }
                     }
-                    // add children
-                    n.add_left_child(left);
-                    n.add_right_child(right);
+                    n = Node::new_concat_node(left, right);
                 } else if top_op == '*' {
-                    // KLEENE
                     let left = tree_stack.pop().unwrap();
-                    // star node is always nullable
-                    n.set_nullable(true);
-                    // firstpos of star node is the same as firstpos of its child
-                    let mut firstpos: HashSet<u32> = HashSet::new();
-                    for x in &left.firstpos {
-                        firstpos.insert(*x);
-                    }
-                    n.firstpos = firstpos;
-                    // lastpos is lastpos of child
-                    let mut lastpos: HashSet<u32> = HashSet::new();
-                    for x in &left.lastpos {
-                        lastpos.insert(*x);
-                    }
-                    n.lastpos = lastpos;
+                    n = Node::new_star_node(left);
                     // update followpos table
                     for x in &n.lastpos {
                         if !fp_table.contains_key(x) {
@@ -617,8 +477,6 @@ fn parse_regex(
                             fp_table.get_mut(x).unwrap().insert(*y);
                         }
                     }
-                    // add only child
-                    n.add_left_child(left);
                 }
 
                 // push new node to tree_stack
@@ -634,80 +492,18 @@ fn parse_regex(
             panic!("Invalid character found in expression.");
         }
     }
-
     // process remaining nodes in op_stack
     while !op_stack.is_empty() {
         let top_op = op_stack.pop().unwrap();
         let mut n = Node::new(top_op, 0, false);
         if top_op == '|' {
             // OR
-            // let right = tree_stack.pop().unwrap();
-            // let left = tree_stack.pop().unwrap();
-            // tree_stack.push(Node::new_union_node(left, right));
-            // continue;
-            // OR
             let right = tree_stack.pop().unwrap();
             let left = tree_stack.pop().unwrap();
-            // compute nullable
-            let nullable = left.nullable || right.nullable;
-            n.set_nullable(nullable);
-            // compute firstpos
-            let union: HashSet<&u32> = left.firstpos.union(&right.firstpos).collect();
-            let mut hs: HashSet<u32> = HashSet::new();
-            for x in union {
-                hs.insert(*x);
-            }
-            n.firstpos = hs.clone();
-            // lastpos of OR node is the same as firstpos
-            n.lastpos = hs;
-            n.add_left_child(left);
-            n.add_right_child(right);
+            n = Node::new_union_node(left, right);
         } else if top_op == '.' {
-            // let right = tree_stack.pop().unwrap();
-            // let left = tree_stack.pop().unwrap();
-            // for x in &left.lastpos {
-            //     if !fp_table.contains_key(&x) {
-            //         fp_table.insert(*x, HashSet::new());
-            //     }
-            //     for y in &right.firstpos {
-            //         fp_table.get_mut(&x).unwrap().insert(*y);
-            //     }
-            // }
-            // let new_node = Node::new_concat_node(left, right);
-            // tree_stack.push(new_node);
-            // continue;
-            // CONCAT
             let right = tree_stack.pop().unwrap();
             let left = tree_stack.pop().unwrap();
-            // compute nullable
-            let nullable = left.nullable && right.nullable;
-            n.set_nullable(nullable);
-            // compute firstpos
-            let mut firstpos: HashSet<u32> = HashSet::new();
-            if left.nullable {
-                let union: HashSet<&u32> = left.firstpos.union(&right.firstpos).collect();
-                for x in union {
-                    firstpos.insert(*x);
-                }
-            } else {
-                for x in &left.firstpos {
-                    firstpos.insert(*x);
-                }
-            }
-            n.firstpos = firstpos;
-            // compute lastpos
-            let mut lastpos: HashSet<u32> = HashSet::new();
-            if right.nullable {
-                let union: HashSet<&u32> = left.lastpos.union(&right.lastpos).collect();
-                for x in union {
-                    lastpos.insert(*x);
-                }
-            } else {
-                for x in &right.lastpos {
-                    lastpos.insert(*x);
-                }
-            }
-            n.lastpos = lastpos;
             // update followpos table
             for x in &left.lastpos {
                 if !fp_table.contains_key(&x) {
@@ -717,26 +513,10 @@ fn parse_regex(
                     fp_table.get_mut(&x).unwrap().insert(*y);
                 }
             }
-            // add children
-            n.add_left_child(left);
-            n.add_right_child(right);
+            n = Node::new_concat_node(left, right);
         } else if top_op == '*' {
-            // KLEENE
             let left = tree_stack.pop().unwrap();
-            // star node is always nullable
-            n.set_nullable(true);
-            // firstpos of star node is the same as firstpos of its child
-            let mut firstpos: HashSet<u32> = HashSet::new();
-            for x in &left.firstpos {
-                firstpos.insert(*x);
-            }
-            n.firstpos = firstpos;
-            // lastpos is lastpos of child
-            let mut lastpos: HashSet<u32> = HashSet::new();
-            for x in &left.lastpos {
-                lastpos.insert(*x);
-            }
-            n.lastpos = lastpos;
+            n = Node::new_star_node(left);
             // update followpos table
             for x in &n.lastpos {
                 if !fp_table.contains_key(x) {
@@ -746,8 +526,6 @@ fn parse_regex(
                     fp_table.get_mut(x).unwrap().insert(*y);
                 }
             }
-            // add only child
-            n.add_left_child(left);
         }
         // add node to tree stack
         tree_stack.push(n);
@@ -1108,6 +886,9 @@ fn main() {
     // saves positions of char in the regex AST, ex.: s_table[a] = {1, 3}
     let mut s_table: HashMap<char, HashSet<u32>> = HashMap::new();
     let tree_root_0 = parse_regex(&proc_regex, &mut fp_table, &mut s_table);
+    // TODO: clean
+    let mut fp_table: HashMap<u32, HashSet<u32>> = HashMap::new();
+    let mut s_table: HashMap<char, HashSet<u32>> = HashMap::new();
     let tree_root_1 = parse_regex(&ex_proc_regex, &mut fp_table, &mut s_table);
 
     // regex to dfa
@@ -1152,6 +933,7 @@ fn main() {
     println!("************************** Regex Info ******************************");
     println!("Original regex:  {}", regex);
     println!("Processed regex: {}", proc_regex);
+    println!("Extended regex:  {}", ex_proc_regex);
     println!("The alphabet found in the regex is: {:?}", alphabet);
     println!("********************** Acceptance of Word **************************");
     println!("NFA accepts        '{}' -> {}", &word, nfa_accepts);
