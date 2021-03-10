@@ -50,8 +50,15 @@
         </div>
       </div>
     </div>
-    <div class="buttons">
-      <b-button @click="advanceAnimation">Advance</b-button>
+    <div class="columns is-centered">
+      <div class="column is-8">
+        <b-field label="Introducir Palabra">
+          <b-input v-model="word"></b-input>
+        </b-field>
+        <b-button expanded type="is-info" @click="simulateWord"
+          >Simular</b-button
+        >
+      </div>
     </div>
   </div>
 </template>
@@ -89,7 +96,9 @@ export default {
       regex: "",
       faType: false,
       network: {},
+      originalCurrNode: 0,
       currentNode: 0,
+      word: "",
     };
   },
   methods: {
@@ -126,7 +135,7 @@ export default {
             ? "#ff5733"
             : "black";
         this.nodes.push({
-          id: key,
+          id: +key,
           label: key,
           color: color,
           font: {
@@ -136,7 +145,7 @@ export default {
         this.alphabet.forEach((a) => {
           if (value[a]) {
             this.edges.push({
-              from: key,
+              from: +key,
               to: value[a],
               label: a,
               color: "black",
@@ -165,7 +174,7 @@ export default {
       // create network
       this.network = new vis.Network(container, data, options);
       this.network.focus(String(this.currentNode));
-      this.network.selectNodes([String(this.currentNode)]);
+      this.network.selectNodes([String(this.currentNode)], false);
     },
 
     parseNfa() {
@@ -230,11 +239,51 @@ export default {
           },
         },
       };
-      const network = new vis.Network(container, data, options);
+      this.network = new vis.Network(container, data, options);
     },
-    advanceAnimation() {
-      this.network.focus(String(this.currentNode++));
-      this.network.selectNodes([String(this.currentNode)]);
+    sleep(ms) {
+      return new Promise((r) => setTimeout(r, ms));
+    },
+    async simulateWord() {
+      this.currentNode = this.originalCurrNode;
+      const options = {
+        scale: 2,
+        animation: true,
+      };
+
+      try {
+        for (let i = 0; i < this.word.length; i++) {
+          const edges = this.edges.filter((e) => e.from == this.currentNode);
+          let found = false;
+          for (let j = 0; j < edges.length; j++) {
+            if (edges[j].label == this.word[i]) {
+              // match
+              found = true;
+              this.network.selectEdges([edges[j].id]);
+              this.currentNode = edges[j].to;
+              this.network.focus(this.currentNode, options);
+              await this.sleep(1000);
+            }
+          }
+          if (!found) throw "wrong word";
+        }
+        this.$buefy.notification.open({
+          duration: 5000,
+          message: `La palabra es aceptada por la expresión regular.`,
+          position: "is-bottom-right",
+          type: "is-success",
+          hasIcon: true,
+        });
+      } catch {
+        await this.sleep(1000);
+        this.$buefy.notification.open({
+          duration: 5000,
+          message: `La palabra no es aceptada por la expresión regular.`,
+          position: "is-bottom-right",
+          type: "is-danger",
+          hasIcon: true,
+        });
+      }
     },
   },
 };
