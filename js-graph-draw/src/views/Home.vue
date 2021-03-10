@@ -50,6 +50,9 @@
         </div>
       </div>
     </div>
+    <div class="buttons">
+      <b-button @click="advanceAnimation">Advance</b-button>
+    </div>
   </div>
 </template>
 
@@ -85,6 +88,8 @@ export default {
       alphabet: [],
       regex: "",
       faType: false,
+      network: {},
+      currentNode: 0,
     };
   },
   methods: {
@@ -158,7 +163,9 @@ export default {
       };
 
       // create network
-      const network = new vis.Network(container, data, options);
+      this.network = new vis.Network(container, data, options);
+      this.network.focus(String(this.currentNode));
+      this.network.selectNodes([String(this.currentNode)]);
     },
 
     parseNfa() {
@@ -224,6 +231,10 @@ export default {
         },
       };
       const network = new vis.Network(container, data, options);
+    },
+    advanceAnimation() {
+      this.network.focus(String(this.currentNode++));
+      this.network.selectNodes([String(this.currentNode)]);
     },
   },
 };
