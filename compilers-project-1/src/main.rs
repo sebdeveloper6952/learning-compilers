@@ -51,6 +51,12 @@ fn preprocess_regex(regex: &String) -> String {
     let bytes = regex.as_bytes();
     for i in 0..bytes.len() {
         let curr = bytes[i] as char;
+        if curr == '(' {
+            let next = bytes[i + 1] as char;
+            if next != '+' || next != '?' {
+                stack.clear()
+            }
+        }
         if curr == '+' {
             let top = stack.pop().unwrap();
             if top == ')' {
@@ -91,7 +97,7 @@ fn preprocess_regex(regex: &String) -> String {
             new_regex.push(curr);
         }
     }
-
+    println!("replaced: {}", new_regex);
     new_regex
 }
 
@@ -396,22 +402,26 @@ fn parse_regex(
     for c in regex.chars() {
         if is_valid_regex_symbol(&c) {
             // build node for c and push into tree_stack
-            let mut n = Node::new(c, next_position, false);
-            // firstpos of a symbol node is only its position
-            let mut hs = HashSet::new();
-            hs.insert(n.position);
-            n.firstpos = hs.clone();
-            // lastpos of a symbol node is only its position
-            n.lastpos = hs;
-            // update s_table to save this char position in the tree
-            if !s_table.contains_key(&c) {
-                s_table.insert(c, HashSet::new());
+            let mut n = Node::new(c, 0, false);
+            if c != EPSILON {
+                n.position = next_position;
+                next_position += 1;
+                // firstpos of a symbol node is only its position
+                let mut hs = HashSet::new();
+                hs.insert(n.position);
+                n.firstpos = hs.clone();
+                // lastpos of a symbol node is only its position
+                n.lastpos = hs;
+                // update s_table to save this char position in the tree
+                if !s_table.contains_key(&c) {
+                    s_table.insert(c, HashSet::new());
+                }
+                s_table.get_mut(&c).unwrap().insert(n.position);
+            } else {
+                n.nullable = true;
             }
-            s_table.get_mut(&c).unwrap().insert(n.position);
             // push this node to the stack of nodes
             tree_stack.push(n);
-            // increment next symbol node position
-            next_position += 1;
         } else if c == '(' {
             // push into op_stack
             op_stack.push(c);
@@ -790,6 +800,11 @@ fn regex_dfa(
     d_states_map.insert(start_vec, curr_state);
     curr_state += 1;
 
+    // check if starting state is an accepting state
+    if root.firstpos.intersection(&s_table[&'#']).count() > 0 {
+        d_acc_states.push(0);
+    }
+
     // main loop
     while !unmarked.is_empty() {
         // pop and mark T
@@ -830,10 +845,8 @@ fn regex_dfa(
                 .unwrap()
                 .insert(*a, d_states_map[&u_vec]);
             // check if U is an accepting state
-            for pos in &s_table[&'#'] {
-                if u.contains(pos) {
-                    d_acc_states.push(d_states_map[&u_vec]);
-                }
+            if u.intersection(&s_table[&'#']).count() > 0 {
+                d_acc_states.push(d_states_map[&u_vec]);
             }
         }
     }
@@ -917,7 +930,7 @@ fn main() {
     let tree_root_1 = parse_regex(&ex_proc_regex, &mut fp_table, &mut s_table);
 
     // regex to dfa
-    let direct_dfa = regex_dfa(&fp_table, &s_table, &tree_root_1, &ex_alphabet);
+    let direct_dfa = regex_dfa(&fp_table, &s_table, &tree_root_1, &alphabet);
 
     // thompson
     let mut nfa_stack = Vec::new();

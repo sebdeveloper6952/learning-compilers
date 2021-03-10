@@ -20,7 +20,7 @@
         <div class="card blue">
           <div class="card-content">
             <p class="subtitle" style="color:white">
-              Los nodos azules son estados iniciales.
+              Los estados azules son estados iniciales.
             </p>
           </div>
         </div>
@@ -29,7 +29,7 @@
         <div class="card red">
           <div class="card-content">
             <p class="subtitle" style="color:white">
-              Los nodos rojos son estados finales.
+              Los estados rojos son estados finales.
             </p>
           </div>
         </div>
@@ -99,6 +99,7 @@ export default {
       originalCurrNode: 0,
       currentNode: 0,
       word: "",
+      acceptingStates: [],
     };
   },
   methods: {
@@ -126,12 +127,12 @@ export default {
     parseDfa() {
       this.faType = "DFA";
       const dfa = this.graphJsonFile.fa.DFA.dfa;
-      const acceptingStates = this.graphJsonFile.fa.DFA.accepting_states;
+      this.acceptingStates = this.graphJsonFile.fa.DFA.accepting_states;
       for (const [key, value] of Object.entries(dfa)) {
         const color =
           key == 0
             ? "#3377ff"
-            : acceptingStates.includes(Number(key))
+            : this.acceptingStates.includes(Number(key))
             ? "#ff5733"
             : "black";
         this.nodes.push({
@@ -265,17 +266,18 @@ export default {
               await this.sleep(1000);
             }
           }
-          if (!found) throw "wrong word";
+          if (!found) throw "error";
         }
-        this.$buefy.notification.open({
-          duration: 5000,
-          message: `La palabra es aceptada por la expresión regular.`,
-          position: "is-bottom-right",
-          type: "is-success",
-          hasIcon: true,
-        });
+        if (this.acceptingStates.includes(this.currentNode)) {
+          this.$buefy.notification.open({
+            duration: 5000,
+            message: `La palabra es aceptada por la expresión regular.`,
+            position: "is-bottom-right",
+            type: "is-success",
+            hasIcon: true,
+          });
+        } else throw "error";
       } catch {
-        await this.sleep(1000);
         this.$buefy.notification.open({
           duration: 5000,
           message: `La palabra no es aceptada por la expresión regular.`,
