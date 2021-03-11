@@ -50,7 +50,7 @@
         </div>
       </div>
     </div>
-    <div class="columns is-centered">
+    <div class="columns is-centered" v-if="faType == 'DFA'">
       <div class="column is-8">
         <b-field label="Introducir Palabra">
           <b-input v-model="word"></b-input>

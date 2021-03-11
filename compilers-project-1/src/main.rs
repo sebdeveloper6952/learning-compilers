@@ -715,7 +715,9 @@ fn f_move(
             if table[&state].contains_key(&symbol) {
                 let ts = &table[&state][&symbol];
                 for t in ts {
-                    res.push(*t);
+                    if !res.contains(t) {
+                        res.push(*t);
+                    }
                 }
             }
         }
@@ -746,25 +748,25 @@ fn subset_construction(nfa: &Nfa, alphabet: &HashSet<char>) -> Dfa {
         // foreach input symbol
         for a in alphabet.iter() {
             // U = e-clos(move(T, a))
-            let state_u = e_closure(&f_move(&state_t[..], &a, &nfa.nfa)[..], &nfa.nfa);
-            // if U not in d_states
-            if !d_states.contains(&state_u) {
+            let mut state_u = e_closure(&f_move(&state_t[..], &a, &nfa.nfa)[..], &nfa.nfa);
+            // sort vec because of hash calculation
+            state_u.sort();
+            // if U is not in d_states
+            if state_u.len() > 0 && !d_states.contains(&state_u) {
                 d_states.insert(state_u.clone());
                 unmarked.push(state_u.clone());
                 d_states_map.insert(state_u.clone(), curr_state);
                 curr_state += 1;
             }
             // dfa[T, a] = U
-            // TODO: remove following 2 lines and check validity
-            let mut h_map = HashMap::new();
-            h_map.insert(a, state_u.clone());
             if !dfa.contains_key(&d_states_map[&state_t]) {
                 dfa.insert(d_states_map[&state_t], HashMap::new());
             }
-            dfa.get_mut(&d_states_map[&state_t])
-                .unwrap()
-                .insert(*a, d_states_map[&state_u]);
-
+            if state_u.len() > 0 {
+                dfa.get_mut(&d_states_map[&state_t])
+                    .unwrap()
+                    .insert(*a, d_states_map[&state_u]);
+            }
             // is U an accepting state
             if state_t.contains(&nfa.last_state) {
                 if !d_acc_states.contains(&d_states_map[&state_t]) {
@@ -828,7 +830,7 @@ fn regex_dfa(
             // containing the same elements
             u_vec.sort();
             // if U is not in Dstates
-            if !d_states.contains(&u_vec) {
+            if u_vec.len() > 0 && !d_states.contains(&u_vec) {
                 d_states.insert(u_vec.clone());
                 // save state as unmarked for processing
                 unmarked.push(u_vec.clone());
@@ -841,9 +843,11 @@ fn regex_dfa(
                 dfa.insert(d_states_map[&state_t], HashMap::new());
             }
             // update transition table to reflect DFA[T, a] = U
-            dfa.get_mut(&d_states_map[&state_t])
-                .unwrap()
-                .insert(*a, d_states_map[&u_vec]);
+            if u_vec.len() > 0 {
+                dfa.get_mut(&d_states_map[&state_t])
+                    .unwrap()
+                    .insert(*a, d_states_map[&u_vec]);
+            }
             // check if U is an accepting state
             if u.intersection(&s_table[&'#']).count() > 0 {
                 d_acc_states.push(d_states_map[&u_vec]);
@@ -934,7 +938,6 @@ fn main() {
 
     // thompson
     let mut nfa_stack = Vec::new();
-    // thompson_algorithm(tree_stack.pop().unwrap(), &mut nfa_stack, 0);
     thompson_algorithm(tree_root_0, &mut nfa_stack, 0);
 
     let nfa = nfa_stack.pop().unwrap();
