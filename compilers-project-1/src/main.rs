@@ -794,12 +794,16 @@ fn regex_dfa(
     let mut curr_state = 0;
 
     // push start state, it is firstpos of the root of the tree
-    let start_state: Vec<u32> = root.firstpos.clone().into_iter().collect();
-    unmarked.push(start_state);
+    let mut start_state: Vec<u32> = root.firstpos.clone().into_iter().collect();
+    start_state.sort();
+    unmarked.push(start_state.clone());
     // initialize d_states to contain the start state
-    let start_vec: Vec<u32> = root.firstpos.iter().map(|a| *a).collect();
-    d_states.insert(start_vec.clone());
-    d_states_map.insert(start_vec, curr_state);
+    // let mut start_vec: Vec<u32> = root.firstpos.iter().map(|a| *a).collect();
+    // start_vec.sort();
+    // d_states.insert(start_vec.clone());
+    // d_states_map.insert(start_vec, curr_state);
+    d_states.insert(start_state.clone());
+    d_states_map.insert(start_state.clone(), curr_state);
     curr_state += 1;
 
     // check if starting state is an accepting state
@@ -932,8 +936,10 @@ fn main() {
     let mut fp_table: HashMap<u32, HashSet<u32>> = HashMap::new();
     let mut s_table: HashMap<char, HashSet<u32>> = HashMap::new();
     let tree_root_1 = parse_regex(&ex_proc_regex, &mut fp_table, &mut s_table);
+    println!("s_table {:?}", s_table);
+    println!("fp_table {:?}", fp_table);
 
-    // regex to dfa
+    // regex -> dfa
     let direct_dfa = regex_dfa(&fp_table, &s_table, &tree_root_1, &alphabet);
 
     // thompson

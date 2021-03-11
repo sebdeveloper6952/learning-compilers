@@ -144,7 +144,7 @@ export default {
           },
         });
         this.alphabet.forEach((a) => {
-          if (value[a]) {
+          if (value[a] != undefined) {
             this.edges.push({
               from: +key,
               to: value[a],
