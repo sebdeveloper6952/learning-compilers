@@ -97,13 +97,12 @@ fn preprocess_regex(regex: &String) -> String {
             new_regex.push(curr);
         }
     }
-    println!("replaced: {}", new_regex);
     new_regex
 }
 
 /*
  * Is the char an operator?
- */
+*/
 fn is_op(c: char) -> bool {
     match c {
         '*' => true,
@@ -117,7 +116,7 @@ fn is_op(c: char) -> bool {
 
 /*
  * Is the char valid in our regular expressions?
- */
+*/
 fn is_valid_regex_symbol(c: &char) -> bool {
     c.is_ascii_alphanumeric() || *c == '#' || *c == EPSILON
 }
@@ -862,6 +861,106 @@ fn regex_dfa(
     Dfa::new(dfa, d_acc_states)
 }
 
+// ************************************************ Regex -> DFA ************************************************
+fn minimize_dfa(dfa: &Dfa, alphabet: &HashSet<char>) -> Dfa {
+    let mut d_dfa: HashMap<u32, HashMap<char, u32>> = HashMap::new();
+    let mut d_acc_states: Vec<u32> = Vec::new();
+
+    // partition data
+    let mut partition: Vec<Vec<u32>> = Vec::new();
+    let mut new_partition: Vec<Vec<u32>> = Vec::new();
+    // group s
+    let s: HashSet<u32> = dfa.dfa.keys().into_iter().cloned().collect();
+    // group f
+    let f: HashSet<u32> = dfa.accepting_states.iter().cloned().collect();
+    // s - f
+    let diff: HashSet<u32> = s.difference(&f).into_iter().map(|a| *a).collect();
+    // push initial groups
+    partition.push(diff.iter().cloned().collect());
+    partition.push(f.iter().cloned().collect());
+
+    // main loop
+    loop {
+        for group in &partition {
+            let mut p_in: Vec<u32> = Vec::new();
+            let mut p_out: Vec<u32> = Vec::new();
+            if group.len() == 1 {
+                new_partition.push(group.clone());
+                continue;
+            }
+            for state in group {
+                let mut is_in = true;
+                for symbol in alphabet {
+                    if !group.contains(&dfa.dfa[&state][&symbol]) {
+                        is_in = false;
+                        if !p_out.contains(state) {
+                            p_out.push(*state);
+                        }
+                    }
+                }
+                if is_in && !p_in.contains(state) {
+                    p_in.push(*state);
+                }
+            }
+            p_in.sort();
+            p_out.sort();
+            if p_in.len() > 0 && !new_partition.contains(&p_in) {
+                new_partition.push(p_in.iter().cloned().collect());
+            }
+            if p_out.len() > 0 && !new_partition.contains(&p_out) {
+                new_partition.push(p_out.iter().cloned().collect());
+            }
+        }
+        // minimization cannot continue
+        partition.sort();
+        new_partition.sort();
+        if partition == new_partition {
+            break;
+        } else {
+            partition = new_partition.clone();
+            new_partition.clear();
+        }
+    }
+    // map aliases of deleted states
+    let mut aliases: HashMap<u32, u32> = HashMap::new();
+    for (key, _) in &dfa.dfa {
+        aliases.insert(*key, *key);
+    }
+    for group in partition {
+        let rep = group.first().unwrap();
+        for state in &group {
+            aliases.insert(*state, *rep);
+        }
+        // is this state a final state?
+        if dfa.accepting_states.contains(rep) {
+            d_acc_states.push(*rep);
+        }
+        for symbol in alphabet {
+            if !d_dfa.contains_key(&rep) {
+                d_dfa.insert(*rep, HashMap::new());
+            }
+            d_dfa
+                .get_mut(rep)
+                .unwrap()
+                .insert(*symbol, aliases[&dfa.dfa[&rep][&symbol]]);
+        }
+    }
+    // new transition table
+    let mut dd_dfa = HashMap::new();
+    for (key, value) in d_dfa {
+        for symbol in alphabet {
+            if !dd_dfa.contains_key(&key) {
+                dd_dfa.insert(key, HashMap::new());
+            }
+            dd_dfa
+                .get_mut(&key)
+                .unwrap()
+                .insert(*symbol, aliases[&value[symbol]]);
+        }
+    }
+    Dfa::new(dd_dfa, d_acc_states)
+}
+
 // *********************************************** NFA Simulation ***********************************************
 fn nfa_simul(nfa: &Nfa, word: &String) -> bool {
     let mut curr_states = e_closure(&[nfa.first_state], &nfa.nfa);
@@ -936,8 +1035,6 @@ fn main() {
     let mut fp_table: HashMap<u32, HashSet<u32>> = HashMap::new();
     let mut s_table: HashMap<char, HashSet<u32>> = HashMap::new();
     let tree_root_1 = parse_regex(&ex_proc_regex, &mut fp_table, &mut s_table);
-    println!("s_table {:?}", s_table);
-    println!("fp_table {:?}", fp_table);
 
     // regex -> dfa
     let direct_dfa = regex_dfa(&fp_table, &s_table, &tree_root_1, &alphabet);
@@ -945,9 +1042,12 @@ fn main() {
     // thompson
     let mut nfa_stack = Vec::new();
     thompson_algorithm(tree_root_0, &mut nfa_stack, 0);
-
+    // subset construction
     let nfa = nfa_stack.pop().unwrap();
     let dfa = subset_construction(&nfa, &alphabet);
+
+    // dfa minimization
+    let minimized_dfa = minimize_dfa(&dfa, &alphabet);
 
     // nfa simulation
     let nfa_start = Instant::now();
@@ -964,6 +1064,11 @@ fn main() {
     let ddfa_accepts = dfa_simul(&direct_dfa, &word);
     let ddfa_duration = ddfa_start.elapsed().as_nanos();
 
+    // minimized dfa simulation
+    let min_start = Instant::now();
+    let min_accepts = dfa_simul(&minimized_dfa, &word);
+    let min_duration = min_start.elapsed().as_nanos();
+
     // write files
     let dfa_file = FAFile::new(alphabet.clone(), regex.to_string(), FAType::DFA(dfa));
     let serialized = serde_json::to_string(&dfa_file).unwrap();
@@ -974,6 +1079,13 @@ fn main() {
     let ddfa_file = FAFile::new(alphabet.clone(), regex.to_string(), FAType::DFA(direct_dfa));
     let serialized = serde_json::to_string(&ddfa_file).unwrap();
     fs::write("./direct-dfa.json", serialized).expect("Error writing to file.");
+    let file = FAFile::new(
+        alphabet.clone(),
+        regex.to_string(),
+        FAType::DFA(minimized_dfa),
+    );
+    let serialized = serde_json::to_string(&file).unwrap();
+    fs::write("./minimized-dfa.json", serialized).expect("Error writing to file.");
 
     // Info
     println!("************************** Regex Info ******************************");
@@ -982,12 +1094,14 @@ fn main() {
     println!("Extended regex:  {}", ex_proc_regex);
     println!("The alphabet found in the regex is: {:?}", alphabet);
     println!("********************** Acceptance of Word **************************");
-    println!("NFA accepts        '{}' -> {}", &word, nfa_accepts);
-    println!("DFA accepts        '{}' -> {}", &word, dfa_accepts);
-    println!("Direct DFA accepts '{}' -> {}", &word, ddfa_accepts);
+    println!("NFA accepts           '{}' -> {}", &word, nfa_accepts);
+    println!("DFA accepts           '{}' -> {}", &word, dfa_accepts);
+    println!("Direct DFA accepts    '{}' -> {}", &word, ddfa_accepts);
+    println!("Minimized DFA accepts '{}' -> {}", &word, min_accepts);
     println!("**********************  Simulation Timing **************************");
-    println!("NFA:        {} nanoseconds", nfa_duration);
-    println!("DFA:        {} nanoseconds", dfa_duration);
-    println!("Direct DFA: {} nanoseconds", ddfa_duration);
+    println!("NFA:           {} nanoseconds", nfa_duration);
+    println!("DFA:           {} nanoseconds", dfa_duration);
+    println!("Direct DFA:    {} nanoseconds", ddfa_duration);
+    println!("Minimized DFA: {} nanoseconds", min_duration);
     println!("********************************************************************");
 }
