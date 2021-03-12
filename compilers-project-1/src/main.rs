@@ -891,10 +891,12 @@ fn minimize_dfa(dfa: &Dfa, alphabet: &HashSet<char>) -> Dfa {
             for state in group {
                 let mut is_in = true;
                 for symbol in alphabet {
-                    if !group.contains(&dfa.dfa[&state][&symbol]) {
-                        is_in = false;
-                        if !p_out.contains(state) {
-                            p_out.push(*state);
+                    if dfa.dfa[&state].contains_key(&symbol) {
+                        if !group.contains(&dfa.dfa[&state][&symbol]) {
+                            is_in = false;
+                            if !p_out.contains(state) {
+                                p_out.push(*state);
+                            }
                         }
                     }
                 }
@@ -939,10 +941,12 @@ fn minimize_dfa(dfa: &Dfa, alphabet: &HashSet<char>) -> Dfa {
             if !d_dfa.contains_key(&rep) {
                 d_dfa.insert(*rep, HashMap::new());
             }
-            d_dfa
-                .get_mut(rep)
-                .unwrap()
-                .insert(*symbol, aliases[&dfa.dfa[&rep][&symbol]]);
+            if dfa.dfa[&rep].contains_key(&symbol) {
+                d_dfa
+                    .get_mut(rep)
+                    .unwrap()
+                    .insert(*symbol, aliases[&dfa.dfa[&rep][&symbol]]);
+            }
         }
     }
     // new transition table
@@ -952,10 +956,12 @@ fn minimize_dfa(dfa: &Dfa, alphabet: &HashSet<char>) -> Dfa {
             if !dd_dfa.contains_key(&key) {
                 dd_dfa.insert(key, HashMap::new());
             }
-            dd_dfa
-                .get_mut(&key)
-                .unwrap()
-                .insert(*symbol, aliases[&value[symbol]]);
+            if value.contains_key(&symbol) {
+                dd_dfa
+                    .get_mut(&key)
+                    .unwrap()
+                    .insert(*symbol, aliases[&value[symbol]]);
+            }
         }
     }
     Dfa::new(dd_dfa, d_acc_states)
