@@ -178,13 +178,9 @@ impl Node {
         new_node.set_nullable(nullable);
         // compute firstpos
         let union: HashSet<&u32> = left.firstpos.union(&right.firstpos).collect();
-        let mut hs: HashSet<u32> = HashSet::new();
-        for x in union {
-            hs.insert(*x);
-        }
-        new_node.firstpos = hs.clone();
-        // lastpos of OR node is the same as firstpos
-        new_node.lastpos = hs;
+        new_node.firstpos = union.iter().cloned().map(|a| *a).collect();
+        let union: HashSet<&u32> = left.lastpos.union(&right.lastpos).collect();
+        new_node.lastpos = union.iter().cloned().map(|a| *a).collect();
         // add children
         new_node.add_left_child(left);
         new_node.add_right_child(right);
@@ -796,11 +792,6 @@ fn regex_dfa(
     let mut start_state: Vec<u32> = root.firstpos.clone().into_iter().collect();
     start_state.sort();
     unmarked.push(start_state.clone());
-    // initialize d_states to contain the start state
-    // let mut start_vec: Vec<u32> = root.firstpos.iter().map(|a| *a).collect();
-    // start_vec.sort();
-    // d_states.insert(start_vec.clone());
-    // d_states_map.insert(start_vec, curr_state);
     d_states.insert(start_state.clone());
     d_states_map.insert(start_state.clone(), curr_state);
     curr_state += 1;
@@ -825,7 +816,9 @@ fn regex_dfa(
             for p in &state_t {
                 // for each position that corresponds to char a
                 if s_table[a].contains(&p) {
-                    u.extend(&fp_table[&p]);
+                    if fp_table.contains_key(&p) {
+                        u.extend(&fp_table[&p]);
+                    }
                 }
             }
             let mut u_vec: Vec<u32> = u.clone().into_iter().collect();
@@ -853,7 +846,9 @@ fn regex_dfa(
             }
             // check if U is an accepting state
             if u.intersection(&s_table[&'#']).count() > 0 {
-                d_acc_states.push(d_states_map[&u_vec]);
+                if !d_acc_states.contains(&d_states_map[&u_vec]) {
+                    d_acc_states.push(d_states_map[&u_vec]);
+                }
             }
         }
     }
@@ -876,11 +871,16 @@ fn minimize_dfa(dfa: &Dfa, alphabet: &HashSet<char>) -> Dfa {
     // s - f
     let diff: HashSet<u32> = s.difference(&f).into_iter().map(|a| *a).collect();
     // push initial groups
-    partition.push(diff.iter().cloned().collect());
-    partition.push(f.iter().cloned().collect());
+    let mut diff: Vec<u32> = diff.iter().cloned().collect();
+    let mut f: Vec<u32> = f.iter().cloned().collect();
+    f.sort();
+    diff.sort();
+    partition.push(diff);
+    partition.push(f);
 
     // main loop
     loop {
+        println!("initial partition: {:?}", partition);
         for group in &partition {
             let mut p_in: Vec<u32> = Vec::new();
             let mut p_out: Vec<u32> = Vec::new();
@@ -892,15 +892,22 @@ fn minimize_dfa(dfa: &Dfa, alphabet: &HashSet<char>) -> Dfa {
                 let mut is_in = true;
                 for symbol in alphabet {
                     if dfa.dfa[&state].contains_key(&symbol) {
+                        println!(
+                            "state {:?} on input {} goes to {}",
+                            state, symbol, dfa.dfa[&state][&symbol]
+                        );
                         if !group.contains(&dfa.dfa[&state][&symbol]) {
                             is_in = false;
                             if !p_out.contains(state) {
                                 p_out.push(*state);
+                                println!("state {:?} goes to other group", state);
+                                break;
                             }
                         }
                     }
                 }
                 if is_in && !p_in.contains(state) {
+                    println!("state {:?} stays in the group", state);
                     p_in.push(*state);
                 }
             }
@@ -908,35 +915,51 @@ fn minimize_dfa(dfa: &Dfa, alphabet: &HashSet<char>) -> Dfa {
             p_out.sort();
             if p_in.len() > 0 && !new_partition.contains(&p_in) {
                 new_partition.push(p_in.iter().cloned().collect());
+                println!("{:?}", new_partition);
             }
             if p_out.len() > 0 && !new_partition.contains(&p_out) {
                 new_partition.push(p_out.iter().cloned().collect());
+                println!("{:?}", new_partition);
             }
         }
-        // minimization cannot continue
-        partition.sort();
-        new_partition.sort();
+        // subgroup generation cannot continue
+        println!("end of loop");
+        println!("partition:     {:?}", partition);
+        println!("new partition: {:?}", new_partition);
+        // if partitions are the same, minimization cannot continue
         if partition == new_partition {
+            partition = new_partition;
             break;
         } else {
+            println!("partions dont match.");
             partition = new_partition.clone();
             new_partition.clear();
         }
     }
+    println!("final partition: {:?}", partition);
     // map aliases of deleted states
     let mut aliases: HashMap<u32, u32> = HashMap::new();
     for (key, _) in &dfa.dfa {
         aliases.insert(*key, *key);
     }
+    // build new dfa
     for group in partition {
+        // grab the representative of the current group
         let rep = group.first().unwrap();
+        if *rep == std::u32::MAX {
+            continue;
+        }
+        // all other states are aliased to the representative
         for state in &group {
             aliases.insert(*state, *rep);
+            // is this state a final state?
+            if dfa.accepting_states.contains(state) {
+                if !d_acc_states.contains(rep) {
+                    d_acc_states.push(*rep);
+                }
+            }
         }
-        // is this state a final state?
-        if dfa.accepting_states.contains(rep) {
-            d_acc_states.push(*rep);
-        }
+        // for each symbol in alphabet
         for symbol in alphabet {
             if !d_dfa.contains_key(&rep) {
                 d_dfa.insert(*rep, HashMap::new());
@@ -964,6 +987,7 @@ fn minimize_dfa(dfa: &Dfa, alphabet: &HashSet<char>) -> Dfa {
             }
         }
     }
+
     Dfa::new(dd_dfa, d_acc_states)
 }
 
@@ -986,6 +1010,8 @@ fn dfa_simul(dfa: &Dfa, word: &String) -> bool {
     for c in word.chars() {
         if dfa.dfa[&curr_state].contains_key(&c) {
             curr_state = dfa.dfa[&curr_state][&c];
+        } else {
+            return false;
         }
     }
 
@@ -1082,9 +1108,11 @@ fn main() {
     let nfa_file = FAFile::new(alphabet.clone(), regex.to_string(), FAType::NFA(nfa));
     let serialized = serde_json::to_string(&nfa_file).unwrap();
     fs::write("./nfa.json", serialized).expect("Error writing to file.");
+    // // direct
     let ddfa_file = FAFile::new(alphabet.clone(), regex.to_string(), FAType::DFA(direct_dfa));
     let serialized = serde_json::to_string(&ddfa_file).unwrap();
     fs::write("./direct-dfa.json", serialized).expect("Error writing to file.");
+    // // minimized
     let file = FAFile::new(
         alphabet.clone(),
         regex.to_string(),
