@@ -93,6 +93,7 @@ export default {
       nodes: [],
       edges: [],
       alphabet: [],
+      epsilon: "@",
       regex: "",
       faType: false,
       network: {},
@@ -118,7 +119,7 @@ export default {
       this.nodes = [];
       this.edges = [];
       this.alphabet = this.graphJsonFile.alphabet;
-      this.alphabet.push("$");
+      this.alphabet.push(this.epsilon);
       this.regex = this.graphJsonFile.regex;
       this.file = {};
       if (this.graphJsonFile.fa.DFA) this.parseDfa();

@@ -1,1 +1,1 @@
-{"alphabet":["b","a"],"regex":"(a|b)*abb","fa":{"DFA":{"dfa":{"4":{"a":2,"b":0},"3":{"a":2,"b":4},"2":{"b":3,"a":2},"0":{"b":0,"a":2}},"accepting_states":[4]}}}
+{"alphabet":["1","0"],"regex":"(1|0)+001","fa":{"DFA":{"dfa":{"1":{"1":1},"0":{"0":1}},"accepting_states":[1]}}}

@@ -9,7 +9,7 @@ use std::time::Instant;
 
 // Global variables
 // the representation of the Epsilon character
-const EPSILON: char = '$';
+const EPSILON: char = '@';
 
 /*
  * Utility function to create hashset from u8 slice.
@@ -29,8 +29,8 @@ fn regex_insert_concat_op(regex: &String) -> String {
     for i in 1..bytes.len() {
         let prev = bytes[i - 1] as char;
         let curr = bytes[i] as char;
-        if prev.is_ascii_alphabetic() || prev == '*' || prev == ')' {
-            if curr.is_ascii_alphabetic() || curr == '#' || curr == '(' {
+        if is_valid_regex_symbol(&prev) || prev == '*' || prev == ')' {
+            if is_valid_regex_symbol(&curr) || curr == '#' || curr == '(' {
                 new_regex.push('.');
             }
         }
@@ -365,12 +365,12 @@ impl FAFile {
 // ***************************************** Regex Parse and Tree *****************************************
 /*
  * loop through input regex to build the Abstract Syntax Tree for the regex.
- * the algorithm used is the one created by Edsger Dijkstra, Shunting Yard Algorithm
+ * the algorithm used is the one created by Edsger Dijkstra, Shunting Yard Algorithm.
  * https://en.wikipedia.org/wiki/Shunting-yard_algorithm
  *
- * Input: a regex
- * Output: the node that represents the root of the tree
- *         the global alphabet is also updated
+ * Input: a regular expression
+ * Output: the node that represents the root of the tree.
+ *
  * The followpos table is also updated to be used later
  * in the REGEX -> DFA algorithm.
  */
@@ -425,7 +425,13 @@ fn parse_regex(
             // build nodes for the operators popped from stack
             loop {
                 // pop until '(' is found
-                let op = op_stack.pop().unwrap();
+                let op = match op_stack.pop() {
+                    Some(op) => op,
+                    None => {
+                        println!("An error was found: missing opening parentheses, please check your input regular expression.");
+                        process::exit(1);
+                    }
+                };
                 if op == '(' {
                     break;
                 }
@@ -554,6 +560,9 @@ fn parse_regex(
                     fp_table.get_mut(x).unwrap().insert(*y);
                 }
             }
+        } else {
+            println!("An error was found, please check your input regular expression.");
+            process::exit(1);
         }
         // add node to tree stack
         tree_stack.push(n);
@@ -1079,7 +1088,7 @@ fn main() {
     let dfa = subset_construction(&nfa, &alphabet);
 
     // dfa minimization
-    let minimized_dfa = minimize_dfa(&dfa, &alphabet);
+    // let minimized_dfa = minimize_dfa(&dfa, &alphabet);
 
     // nfa simulation
     let nfa_start = Instant::now();
@@ -1097,9 +1106,9 @@ fn main() {
     let ddfa_duration = ddfa_start.elapsed().as_nanos();
 
     // minimized dfa simulation
-    let min_start = Instant::now();
-    let min_accepts = dfa_simul(&minimized_dfa, &word);
-    let min_duration = min_start.elapsed().as_nanos();
+    // let min_start = Instant::now();
+    // let min_accepts = dfa_simul(&minimized_dfa, &word);
+    // let min_duration = min_start.elapsed().as_nanos();
 
     // write files
     let dfa_file = FAFile::new(alphabet.clone(), regex.to_string(), FAType::DFA(dfa));
@@ -1113,13 +1122,13 @@ fn main() {
     let serialized = serde_json::to_string(&ddfa_file).unwrap();
     fs::write("./direct-dfa.json", serialized).expect("Error writing to file.");
     // // minimized
-    let file = FAFile::new(
-        alphabet.clone(),
-        regex.to_string(),
-        FAType::DFA(minimized_dfa),
-    );
-    let serialized = serde_json::to_string(&file).unwrap();
-    fs::write("./minimized-dfa.json", serialized).expect("Error writing to file.");
+    // let file = FAFile::new(
+    //     alphabet.clone(),
+    //     regex.to_string(),
+    //     FAType::DFA(minimized_dfa),
+    // );
+    // let serialized = serde_json::to_string(&file).unwrap();
+    // fs::write("./minimized-dfa.json", serialized).expect("Error writing to file.");
 
     // Info
     println!("************************** Regex Info ******************************");
@@ -1131,11 +1140,11 @@ fn main() {
     println!("NFA accepts           '{}' -> {}", &word, nfa_accepts);
     println!("DFA accepts           '{}' -> {}", &word, dfa_accepts);
     println!("Direct DFA accepts    '{}' -> {}", &word, ddfa_accepts);
-    println!("Minimized DFA accepts '{}' -> {}", &word, min_accepts);
+    // println!("Minimized DFA accepts '{}' -> {}", &word, min_accepts);
     println!("**********************  Simulation Timing **************************");
     println!("NFA:           {} nanoseconds", nfa_duration);
     println!("DFA:           {} nanoseconds", dfa_duration);
     println!("Direct DFA:    {} nanoseconds", ddfa_duration);
-    println!("Minimized DFA: {} nanoseconds", min_duration);
+    // println!("Minimized DFA: {} nanoseconds", min_duration);
     println!("********************************************************************");
 }
