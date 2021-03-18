@@ -7,21 +7,17 @@ use std::iter::FromIterator;
 use std::process;
 use std::time::Instant;
 
-// Global variables
-// the representation of the Epsilon character
+/// Global variables
+/// the representation of the Epsilon character
 const EPSILON: char = '@';
 
-/*
- * Utility function to create hashset from u8 slice.
- */
+/// Utility function to create hashset from u32 slice.
 fn hashset(data: &[u32]) -> HashSet<u32> {
     HashSet::from_iter(data.iter().cloned())
 }
 
-/*
- * Insert an explicit concatenation operator ('.') into the regular
- * expression so parsing it is easier.
-*/
+/// Insert an explicit concatenation operator ('.') into the regular
+/// expression so parsing it is easier.
 fn regex_insert_concat_op(regex: &String) -> String {
     let mut new_regex = String::new();
     let bytes = regex.as_bytes();
@@ -40,12 +36,18 @@ fn regex_insert_concat_op(regex: &String) -> String {
     new_regex
 }
 
-/**
- * Process the extension operators of regexes:
- *  - '+'
- *  - '?'
- *  - *
- */
+/// Process the extension operators of regexes:
+///  - '+'
+/// - '?'
+///
+/// The instances of the above operators are replaced with the
+/// equivalent expressions, using only the basic operators.
+///
+/// For example:
+/// - `a+` is replaced as `a.a*`
+/// - `a?` is replaced as `(a|@)`
+///
+/// `@` is used to represent `EPSILON`.
 fn preprocess_regex(regex: &String) -> String {
     let mut new_regex = String::new();
     let mut stack = Vec::new();
@@ -101,9 +103,7 @@ fn preprocess_regex(regex: &String) -> String {
     new_regex
 }
 
-/*
- * Is the char an operator?
-*/
+/// Is the char an operator?
 fn is_op(c: char) -> bool {
     match c {
         '*' => true,
@@ -115,17 +115,13 @@ fn is_op(c: char) -> bool {
     }
 }
 
-/*
- * Is the char valid in our regular expressions?
-*/
+/// Is the char valid in our regular expressions?
 fn is_valid_regex_symbol(c: &char) -> bool {
     c.is_ascii_alphanumeric() || *c == '#' || *c == EPSILON
 }
 
-/*
- * Depth first traversal, printing the information of each node.
- * Used during development for debugging.
- */
+/// Depth first traversal, printing the information of each node.
+/// Used during development for debugging.
 fn depth_first_debug(root: &Node) {
     match &root.left {
         Some(n) => depth_first_debug(&n),
@@ -141,21 +137,34 @@ fn depth_first_debug(root: &Node) {
     );
 }
 
-/*
- * AST node representation
- */
+/// AST node representation
 #[derive(Debug, Clone)]
 struct Node {
+    /// The symbol of the regex that this node represents.
     symbol: char,
+    /// Left child.
     left: Option<Box<Node>>,
+    /// Right child.
     right: Option<Box<Node>>,
+    /// The position of this node in the syntax tree. This position is used
+    /// in the `regex_dfa` algorithm.
     position: u32,
+    /// Is this node nullable?
     nullable: bool,
+    /// Set of positions that can appear as the first symbols, given the
+    /// sub regular expression represented by this node.
     firstpos: HashSet<u32>,
+    /// Set of positions that can appear as the last symbols, given the
+    /// sub regular expression represented by this node.
     lastpos: HashSet<u32>,
 }
 
 impl Node {
+    /// Creates a new node given the symbol, position, and its
+    /// nullability.
+    ///
+    /// Left and right children can be set using `set_left_child` and
+    /// `set_right_child` respectively.
     fn new(symbol: char, position: u32, nullable: bool) -> Node {
         Node {
             symbol,
@@ -168,9 +177,10 @@ impl Node {
         }
     }
 
-    /**
-     * Create a new node to represent the UNION (OR) operator.
-     */
+    /// Create a new node to represent the UNION (OR) operator.
+    ///
+    /// Firstpos and lastpos are calculated based on the given
+    /// children.
     fn new_union_node(left: Node, right: Node) -> Node {
         // create new node
         let mut new_node = Node::new('|', 0, false);
@@ -189,10 +199,11 @@ impl Node {
         new_node
     }
 
-    /**
-     * Create a new node to represent the CONCATENATION
-     * operator.
-     */
+    /// Create a new node to represent the CONCATENATION
+    /// operator.
+    ///
+    /// Firstpos and lastpos are calculated based on the given
+    /// children.
     fn new_concat_node(left: Node, right: Node) -> Node {
         // new node instance
         let mut new_node = Node::new('.', 0, false);
@@ -232,6 +243,11 @@ impl Node {
         new_node
     }
 
+    /// Create a new node to represent the KLEENE CLOSURE
+    /// operator.
+    ///
+    /// Firstpos and lastpos are calculated based on the given
+    /// child.
     fn new_star_node(left: Node) -> Node {
         let mut new_node = Node::new('*', 0, true);
         // firstpos of star node is the same as firstpos of its child
@@ -251,30 +267,39 @@ impl Node {
         new_node
     }
 
+    /// Set the left child of this node.
     fn add_left_child(&mut self, child: Node) {
         self.left = Some(Box::new(child));
     }
 
+    /// Set the right child of this node.
     fn add_right_child(&mut self, child: Node) {
         self.right = Some(Box::new(child));
     }
 
+    /// Set the nullability of this node.
     fn set_nullable(&mut self, nullable: bool) {
         self.nullable = nullable;
     }
 }
 
-/*
- * NFA representation
- */
+/// NFA representation
 #[derive(Debug, Serialize)]
 struct Nfa {
+    /// The transition table of this `Nfa`.
     nfa: HashMap<u32, HashMap<char, HashSet<u32>>>,
+    /// The number of the first state of this `Nfa`.
     first_state: u32,
+    // The number of the last state of this `Nfa`.
     last_state: u32,
 }
 
 impl Nfa {
+    /// Create a new NFA given.
+    ///
+    /// `nfa`: the transition table
+    /// `first_state`: the number of the first state of the new NFA.
+    /// `last_state`: the number of the last state of the new NFA.
     fn new(
         nfa: HashMap<u32, HashMap<char, HashSet<u32>>>,
         first_state: u32,
@@ -305,16 +330,21 @@ impl fmt::Display for Nfa {
     }
 }
 
-/*
- * DFA representation
- */
+/// DFA representation
 #[derive(Debug, Serialize)]
 struct Dfa {
+    /// The transition table of this `Dfa`.
     dfa: HashMap<u32, HashMap<char, u32>>,
+    /// The set of accepting states of this `Dfa`.
     accepting_states: Vec<u32>,
 }
 
 impl Dfa {
+    /// Create a new DFA.
+    ///
+    /// `dfa`: the transition table for the new DFA.
+    /// `accepting_states`: a vector containing the set of accepting states of
+    /// the new DFA.
     fn new(dfa: HashMap<u32, HashMap<char, u32>>, accepting_states: Vec<u32>) -> Dfa {
         Dfa {
             dfa,
@@ -347,13 +377,23 @@ enum FAType {
 }
 
 #[derive(Serialize)]
+/// Struct to represent a finite automata and serialize it
+/// to JSON.
+///
+/// Contains a regular expression, an alphabet, and the finite
+/// automata. The finite automata can be an instance of a Nfa,
+/// or a Dfa.
 struct FAFile {
+    /// The alphabet that was extracted from the `regex`.
     alphabet: HashSet<char>,
+    /// The regular expression recognized by this `fa`.
     regex: String,
+    /// A finite automata instance, it can be a `Nfa` of a `Dfa`.
     fa: FAType,
 }
 
 impl FAFile {
+    /// Create a new FaFile.
     fn new(alphabet: HashSet<char>, regex: String, fa: FAType) -> FAFile {
         FAFile {
             alphabet,
@@ -364,17 +404,15 @@ impl FAFile {
 }
 
 // ***************************************** Regex Parse and Tree *****************************************
-/*
- * loop through input regex to build the Abstract Syntax Tree for the regex.
- * the algorithm used is the one created by Edsger Dijkstra, Shunting Yard Algorithm.
- * https://en.wikipedia.org/wiki/Shunting-yard_algorithm
- *
- * Input: a regular expression
- * Output: the node that represents the root of the tree.
- *
- * The followpos table is also updated to be used later
- * in the REGEX -> DFA algorithm.
- */
+/// loop through input regex to build the Abstract Syntax Tree for the regex.
+/// the algorithm used is the one created by Edsger Dijkstra, Shunting Yard Algorithm.
+/// <https://en.wikipedia.org/wiki/Shunting-yard_algorithm>
+///
+/// Input: a regular expression
+/// Output: the node that represents the root of the tree.
+///
+/// The followpos table is also updated to be used later
+/// in the REGEX -> DFA algorithm.
 fn parse_regex(
     regex: &String,
     fp_table: &mut HashMap<u32, HashSet<u32>>,
@@ -574,11 +612,13 @@ fn parse_regex(
 }
 
 // *********************************************** Thompson ***********************************************
-/*
- * Thompson algorithm.
- * input: Abstract Syntax Tree
- * output: NFA
- */
+/// Thompson algorithm.
+/// input: Abstract Syntax Tree
+/// output: NFA
+///
+/// `root`: a `Node` that represents the root of a parse tree.
+/// `stack`: auxiliary vector used to save the processed NFAs.
+/// `next_state`: initial number state of the new NFA.
 fn thompson_algorithm(root: Node, stack: &mut Vec<Nfa>, next_state: u32) -> u32 {
     let mut i = match root.left {
         Some(n) => thompson_algorithm(*n, stack, next_state),
@@ -677,11 +717,9 @@ fn thompson_algorithm(root: Node, stack: &mut Vec<Nfa>, next_state: u32) -> u32 
 }
 
 // *********************************************** Subset Construction ***********************************************
-/*
- * Epsilon closure.
- * Returns the set of states reachable from some state 's' in 'states'
- * on e-transitions alone.
- */
+/// Epsilon closure.
+/// Returns the set of states reachable from some state 's' in 'states'
+/// on e-transitions alone.
 fn e_closure(states: &[u32], table: &HashMap<u32, HashMap<char, HashSet<u32>>>) -> Vec<u32> {
     // initialize T to states
     let mut res = states.to_vec();
@@ -706,11 +744,9 @@ fn e_closure(states: &[u32], table: &HashMap<u32, HashMap<char, HashSet<u32>>>) 
     res
 }
 
-/*
- * Move function.
- * Returns the set of states to which there is a transition on input symbol
- * 'symbol' from some state 's' in 'states'.
- */
+/// Move function.
+/// Returns the set of states to which there is a transition on input symbol
+/// 'symbol' from some state 's' in 'states'.
 fn f_move(
     states: &[u32],
     symbol: &char,
@@ -734,6 +770,9 @@ fn f_move(
     res
 }
 
+/// Constructs a DFA given a NFA and an alphabet.
+/// input: NFA, alphabet.
+/// output: DFA.
 fn subset_construction(nfa: &Nfa, alphabet: &HashSet<char>) -> Dfa {
     let mut dfa: HashMap<u32, HashMap<char, u32>> = HashMap::new();
     // [{0,1}, {}]
@@ -791,6 +830,17 @@ fn subset_construction(nfa: &Nfa, alphabet: &HashSet<char>) -> Dfa {
 }
 
 // ************************************************ Regex -> DFA ************************************************
+/// Constructs a DFA directly from the regular expression.
+///
+/// `fp_table`: the followpos table that was built while parsing the regular expression.
+/// `s_table`: the symbol table that was built while parsing the regular expression.
+/// `root`: the root `Node` of the parse tree for the regular expression.
+/// `alphabet`: the alphabet found on the regular expression.
+///
+/// output: DFA.
+///
+/// `fp_table` and `s_table` should be built using the `parse_regex` method. `root` is also
+/// obtained by calling `parse_regex`.
 fn regex_dfa(
     fp_table: &HashMap<u32, HashSet<u32>>,
     s_table: &HashMap<char, HashSet<u32>>,
@@ -872,7 +922,16 @@ fn regex_dfa(
     Dfa::new(dfa, d_acc_states)
 }
 
-// ************************************************ Regex -> DFA ************************************************
+// ************************************************ DFA Minimization ************************************************
+/// Minimizes a DFA.
+///
+/// `dfa`: the `Dfa` to minimize.
+/// `alphabet`: the alphabet that this DFA recognizes.
+///
+/// input: a DFA D.
+/// output: a DFA D'
+///
+/// Partitions the set of states of DFA D by distinguishing states using the alphabet symbols.
 fn minimize_dfa(dfa: &Dfa, alphabet: &HashSet<char>) -> Dfa {
     let mut d_dfa: HashMap<u32, HashMap<char, u32>> = HashMap::new();
     let mut d_acc_states: Vec<u32> = Vec::new();
@@ -1003,6 +1062,9 @@ fn minimize_dfa(dfa: &Dfa, alphabet: &HashSet<char>) -> Dfa {
 }
 
 // *********************************************** NFA Simulation ***********************************************
+/// Simulates a `Nfa` with the given word.
+///
+/// If the given `Nfa` accepts the word, `true` is returned, `false` otherwise.
 fn nfa_simul(nfa: &Nfa, word: &String) -> bool {
     let mut curr_states = e_closure(&[nfa.first_state], &nfa.nfa);
     for c in word.chars() {
@@ -1016,6 +1078,9 @@ fn nfa_simul(nfa: &Nfa, word: &String) -> bool {
 }
 
 // *********************************************** DFA Simulation ***********************************************
+/// Simulates a `Dfa` with the given word.
+///
+/// If the given `Dfa` accepts the word, `true` is returned, `false` otherwise.
 fn dfa_simul(dfa: &Dfa, word: &String) -> bool {
     let mut curr_state = 0;
     for c in word.chars() {
