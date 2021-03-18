@@ -3,7 +3,7 @@
 ### How to run
 
 This project consists of two programs. A finite automata generator and a web application to visualize the generated finite automata.
-To run the finite automata generator, it is recommended to install Docker.
+Please install Docker to run both programs.
 
 1. cd into the `compilers-project-1` directory.
 2. run the following command to create the project executable: `docker run --rm --user "$(id -u)":"$(id -g)" -v "$PWD:/usr/src/myapp" -w /usr/src/myapp rust cargo build --release`
