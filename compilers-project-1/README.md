@@ -4,6 +4,9 @@
 
 <https://youtu.be/gDfzbq9Sg0k>
 
+### To Begin
+- clone or download the whole repository (<https://github.com/sebdeveloper6952/learning-compilers>)
+
 ### How to run
 
 This project consists of two programs. A finite automata generator and a web application to visualize the generated finite automata.
