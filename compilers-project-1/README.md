@@ -20,3 +20,8 @@ Please install Docker to run both programs.
 6. to install the webapp dependencies, run: `docker run -it --rm --name my-running-script -v "$PWD":/usr/src/app -w /usr/src/app node:14 npm install`
 7. to run the webapp, run the following command: `docker run -it --rm --name my-running-script -p 8080:80 -v "$PWD":/usr/src/app -w /usr/src/app node:14 npm run serve`
 8. visit `localhost:8080` on your web browser to use the web application.
+
+### Generate the Project Documentation
+1. cd into the `compilers-project-1` directory.
+1. run `docker run --rm --user "$(id -u)":"$(id -g)" -v "$PWD:/usr/src/myapp" -w /usr/src/myapp rust cargo doc`
+2. in your web browser, open the file: `./target/doc/compilers-project-1/index.html`. Browse through the documentation.
