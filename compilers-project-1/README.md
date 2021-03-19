@@ -15,5 +15,5 @@ Please install Docker to run both programs.
 4. One JSON file for each generated automata will be written to the current directory. These JSON files can be loaded by the web application to visualize the automata.
 5. cd into the `js-grap-draw` directory
 6. to install the webapp dependencies, run: `docker run -it --rm --name my-running-script -v "$PWD":/usr/src/app -w /usr/src/app node:14 npm install`
-7. to run the webapp, run the following command: `docker run -it --rm --name my-running-script -p 8080:80 -v "$PWD":/usr/src/app -w /usr/src/app -p 8080:8080 node:14 npm run serve`
+7. to run the webapp, run the following command: `docker run -it --rm --name my-running-script -p 8080:80 -v "$PWD":/usr/src/app -w /usr/src/app node:14 npm run serve`
 8. visit `localhost:8080` on your web browser to use the web application.
